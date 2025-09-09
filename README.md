@@ -298,31 +298,3 @@ GET  /api/v1/catalog/schemas   # Get schema information
 GET  /health                   # Platform health check
 ```
 
-## 🧪 Testing
-
-The platform includes comprehensive testing for all queries:
-
-1. **Test Basic Connectivity**:
-   ```sql
-   SELECT 1;
-   ```
-
-2. **Test Each Connector**:
-   ```sql
-   -- PostgreSQL
-   SELECT COUNT(*) FROM postgres.solar.solar_panels;
-   
-   -- Kafka
-   SELECT COUNT(*) FROM kafka.solar_panel_telemetry;
-   
-   -- REST API
-   SELECT * FROM rest_api.panels LIMIT 1;
-   ```
-
-3. **Test Federation**:
-   ```sql
-   -- Join across all sources
-   SELECT COUNT(*) 
-   FROM postgres.solar.solar_panels p
-   JOIN kafka.solar_panel_telemetry k ON p.panel_id = k.panel_id;
-   ```

@@ -180,18 +180,20 @@ class RealDataProvider:
                 if sample_value:
                     # Try to parse as JSON to infer schema
                     try:
-                        # Decode bytes if necessary
-                        if isinstance(sample_value, bytes):
-                            sample_value = sample_value.decode('utf-8')
+                        # Decode bytes/bytearray if necessary
+                        if isinstance(sample_value, (bytes, bytearray)):
+                            sample_value_str = sample_value.decode('utf-8')
+                        else:
+                            sample_value_str = str(sample_value)
                         
-                        sample_json = json.loads(sample_value)
+                        sample_json = json.loads(sample_value_str)
                         logger.info(f"Kafka message structure: {list(sample_json.keys()) if isinstance(sample_json, dict) else 'array'}")
                         
                         # Use Spark's automatic schema inference
                         from pyspark.sql.functions import from_json, schema_of_json
                         
-                        # Infer schema from the sample
-                        json_schema = schema_of_json(sample_value)
+                        # Infer schema from the sample (must be string)
+                        json_schema = schema_of_json(sample_value_str)
                         
                         # Parse all messages with the inferred schema
                         parsed_df = df.select(
