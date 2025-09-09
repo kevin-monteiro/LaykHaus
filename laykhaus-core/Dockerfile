@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Install system dependencies including Java for PySpark
 RUN apt-get update && apt-get install -y \
@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir \
     pandas==2.1.3 \
     pyarrow==14.0.1 \
     scikit-learn==1.3.2 \
-    pyspark==3.5.0
+    "pyspark>=3.5.0,<3.6.0"
 
 # Copy application code
 COPY ./src ./src

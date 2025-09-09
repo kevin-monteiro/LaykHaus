@@ -184,7 +184,7 @@ More example queries:
 
 ```sql
 -- Simple PostgreSQL query
-SELECT * FROM solar.solar_panels LIMIT 5;
+SELECT * FROM postgres.solar.solar_panels LIMIT 5;
 
 -- Kafka streaming data
 SELECT * FROM kafka.solar_panel_telemetry LIMIT 10;
@@ -310,7 +310,7 @@ The platform includes comprehensive testing for all queries:
 2. **Test Each Connector**:
    ```sql
    -- PostgreSQL
-   SELECT COUNT(*) FROM solar.solar_panels;
+   SELECT COUNT(*) FROM postgres.solar.solar_panels;
    
    -- Kafka
    SELECT COUNT(*) FROM kafka.solar_panel_telemetry;

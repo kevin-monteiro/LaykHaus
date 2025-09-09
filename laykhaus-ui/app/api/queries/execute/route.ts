@@ -7,14 +7,15 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     
-    // Forward to LaykHaus core /api/v1/query endpoint
-    const response = await fetch(`${LAYKHAUS_API_URL}/api/v1/query`, {
+    // Forward to LaykHaus core Spark federated query endpoint
+    const response = await fetch(`${LAYKHAUS_API_URL}/api/v1/spark/federated-query`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         query: body.query,
+        limit: body.limit || 100,
         // Add any additional parameters if needed
       }),
     })
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: data.success,
       data: data.data || [],
+      columns: data.columns || [],
       schema: data.schema || [],
       rowCount: data.row_count || 0,
       executionTime: data.execution_time_ms || 0,

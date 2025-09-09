@@ -22,7 +22,7 @@ export function QueryResults({ results }: QueryResultsProps) {
     )
   }
   
-  if (!results.data || results.data.length === 0) {
+  if (!results.data || results.data.length === 0 || !results.columns) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         No results returned
@@ -35,10 +35,11 @@ export function QueryResults({ results }: QueryResultsProps) {
   
   const handleExport = (format: 'csv' | 'json') => {
     if (format === 'csv') {
+      const columns = results.columns || Object.keys(results.data[0] || {})
       const csv = [
-        results.columns.join(','),
+        columns.join(','),
         ...results.data.map(row => 
-          results.columns.map(col => JSON.stringify(row[col])).join(',')
+          columns.map(col => JSON.stringify(row[col])).join(',')
         )
       ].join('\n')
       
@@ -62,8 +63,9 @@ export function QueryResults({ results }: QueryResultsProps) {
   }
   
   const handleCopy = () => {
+    const columns = results.columns || Object.keys(results.data[0] || {})
     const text = results.data.map(row => 
-      results.columns.map(col => row[col]).join('\t')
+      columns.map(col => row[col]).join('\t')
     ).join('\n')
     
     navigator.clipboard.writeText(text)
@@ -99,7 +101,7 @@ export function QueryResults({ results }: QueryResultsProps) {
           <table className="w-full">
             <thead className="bg-muted">
               <tr>
-                {results.columns.map((column) => (
+                {(results.columns || Object.keys(results.data[0] || {})).map((column) => (
                   <th
                     key={column}
                     className="px-4 py-2 text-left text-sm font-medium text-muted-foreground"
@@ -115,7 +117,7 @@ export function QueryResults({ results }: QueryResultsProps) {
                   key={rowIndex}
                   className="border-t hover:bg-muted/50 transition-colors"
                 >
-                  {results.columns.map((column) => (
+                  {(results.columns || Object.keys(row)).map((column) => (
                     <td
                       key={column}
                       className="px-4 py-2 text-sm font-mono"
