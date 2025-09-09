@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { QueryInterface } from '@/lib/types/query'
 import { useQueryHistory } from '@/lib/hooks/useQuery'
 import { Button } from '@/components/ui/button'
@@ -13,57 +14,34 @@ interface QueryHistoryProps {
 
 export function QueryHistory({ onSelectQuery }: QueryHistoryProps) {
   const { data: history, isLoading } = useQueryHistory()
+  const [localHistory, setLocalHistory] = useState<QueryInterface[]>([])
   
-  // Mock data for demonstration
-  const mockHistory: QueryInterface[] = [
-    {
-      id: '1',
-      name: 'Customer Analysis',
-      type: 'federated',
-      query: 'SELECT c.*, COUNT(o.id) as order_count FROM customers c LEFT JOIN orders o ON c.id = o.customer_id GROUP BY c.id',
-      dataSources: ['postgres'],
-      executionHistory: [
-        {
-          id: '1',
-          timestamp: new Date(Date.now() - 1000 * 60 * 5),
-          status: 'success',
-          duration: 234,
-        },
-      ],
-    },
-    {
-      id: '2',
-      name: 'Recent Events',
-      type: 'sql',
-      query: 'SELECT * FROM events WHERE timestamp > NOW() - INTERVAL \'1 hour\' ORDER BY timestamp DESC',
-      dataSources: ['kafka'],
-      executionHistory: [
-        {
-          id: '2',
-          timestamp: new Date(Date.now() - 1000 * 60 * 15),
-          status: 'success',
-          duration: 120,
-        },
-      ],
-    },
-    {
-      id: '3',
-      name: 'Failed Query',
-      type: 'sql',
-      query: 'SELECT * FROM non_existent_table',
-      dataSources: ['postgres'],
-      executionHistory: [
-        {
-          id: '3',
-          timestamp: new Date(Date.now() - 1000 * 60 * 30),
-          status: 'failure',
-          error: 'Table "non_existent_table" does not exist',
-        },
-      ],
-    },
-  ]
+  // Load history from localStorage on mount and listen for updates
+  useEffect(() => {
+    const loadHistory = () => {
+      const stored = localStorage.getItem('queryHistory')
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          setLocalHistory(parsed)
+        } catch (e) {
+          console.error('Failed to parse query history:', e)
+        }
+      }
+    }
+    
+    loadHistory()
+    
+    // Listen for storage events to update history
+    window.addEventListener('storage', loadHistory)
+    
+    return () => {
+      window.removeEventListener('storage', loadHistory)
+    }
+  }, [])
   
-  const queries = history || mockHistory
+  // Use API history if available, otherwise use localStorage history
+  const queries = history || localHistory
   
   if (isLoading) {
     return (

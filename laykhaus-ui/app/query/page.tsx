@@ -9,7 +9,7 @@ import { QueryEditor } from '@/components/query/QueryEditor'
 import { QueryResults } from '@/components/query/QueryResults'
 import { SchemaExplorer } from '@/components/query/SchemaExplorer'
 import { QueryHistory } from '@/components/query/QueryHistory'
-import { Play, Save, History, Database, Code2, Layout } from 'lucide-react'
+import { Play, Save, History, Database, Code2 } from 'lucide-react'
 import { useExecuteQuery, useSaveQuery } from '@/lib/hooks/useQuery'
 
 export default function QueryPage() {
@@ -85,7 +85,7 @@ export default function QueryPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Query Editor</CardTitle>
-                  <CardDescription>Write SQL or use the visual builder</CardDescription>
+                  <CardDescription>Write and execute SQL queries across your data sources</CardDescription>
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -121,14 +121,10 @@ export default function QueryPage() {
             </CardHeader>
             <CardContent>
               <Tabs value={activeTab} onValueChange={setActiveTab} data-test-id="query-tabs">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="editor">
                     <Code2 className="mr-2 h-4 w-4" />
                     SQL Editor
-                  </TabsTrigger>
-                  <TabsTrigger value="visual">
-                    <Layout className="mr-2 h-4 w-4" />
-                    Visual Builder
                   </TabsTrigger>
                   <TabsTrigger value="history">
                     <History className="mr-2 h-4 w-4" />
@@ -142,16 +138,6 @@ export default function QueryPage() {
                     onChange={setQuery}
                     onExecute={handleExecute}
                   />
-                </TabsContent>
-                
-                <TabsContent value="visual" className="mt-4">
-                  <div className="min-h-[400px] flex items-center justify-center text-muted-foreground">
-                    <div className="text-center">
-                      <Layout className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>Visual Query Builder</p>
-                      <p className="text-sm mt-2">Drag and drop to build queries visually</p>
-                    </div>
-                  </div>
                 </TabsContent>
                 
                 <TabsContent value="history" className="mt-4">

@@ -35,11 +35,66 @@ export function useExecuteQuery() {
       }
       return response.json() as Promise<QueryResult>
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       toast.success(`Query executed successfully (${data.rowCount} rows)`)
+      
+      // Save to localStorage history
+      try {
+        const stored = localStorage.getItem('queryHistory')
+        const history = stored ? JSON.parse(stored) : []
+        
+        const newEntry: QueryInterface = {
+          id: Date.now().toString(),
+          name: `Query ${new Date().toLocaleString()}`,
+          type: 'sql',
+          query: variables.query,
+          dataSources: variables.dataSources || [],
+          executionHistory: [{
+            id: Date.now().toString(),
+            timestamp: new Date(),
+            status: 'success',
+            duration: data.executionTime,
+          }],
+        }
+        
+        // Keep only last 20 queries
+        const updatedHistory = [newEntry, ...history].slice(0, 20)
+        localStorage.setItem('queryHistory', JSON.stringify(updatedHistory))
+        
+        // Trigger storage event to update other components
+        window.dispatchEvent(new Event('storage'))
+      } catch (e) {
+        console.error('Failed to save query to history:', e)
+      }
     },
-    onError: (error: any) => {
+    onError: (error: any, variables) => {
       toast.error(error.message || 'Query execution failed')
+      
+      // Save failed query to history too
+      try {
+        const stored = localStorage.getItem('queryHistory')
+        const history = stored ? JSON.parse(stored) : []
+        
+        const newEntry: QueryInterface = {
+          id: Date.now().toString(),
+          name: `Failed Query ${new Date().toLocaleString()}`,
+          type: 'sql',
+          query: variables.query,
+          dataSources: variables.dataSources || [],
+          executionHistory: [{
+            id: Date.now().toString(),
+            timestamp: new Date(),
+            status: 'failure',
+            error: error.message,
+          }],
+        }
+        
+        const updatedHistory = [newEntry, ...history].slice(0, 20)
+        localStorage.setItem('queryHistory', JSON.stringify(updatedHistory))
+        window.dispatchEvent(new Event('storage'))
+      } catch (e) {
+        console.error('Failed to save query to history:', e)
+      }
     },
   })
 }
