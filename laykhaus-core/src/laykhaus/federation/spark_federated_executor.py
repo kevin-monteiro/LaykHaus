@@ -153,117 +153,90 @@ class SparkFederatedExecutor:
         start_time = time.time()
         
         try:
-            # For now, use a simplified approach that works with Spark SQL directly
-            logger.info(f"Executing federated query: {sql[:100]}...")
-            
-            # Parse the SQL to identify data sources
+            from ..core.config import settings
             import re
             
-            # Register all available connectors as Spark views
-            for connector_id in self.connection_manager.list_connectors():
-                connector = self.connection_manager.get_connector(connector_id)
-                if connector and connector.is_connected:
-                    try:
-                        # Create a simple table name from connector ID
-                        table_name = connector_id.replace('_', '.')
-                        
-                        # For PostgreSQL, register tables
-                        if 'postgres' in connector_id:
-                            # Register common tables
-                            for table in ['solar_panels', 'energy_production', 'customers']:
-                                view_name = f"postgres.solar.{table}"
-                                query = f"SELECT * FROM solar.{table}"
-                                # Mock registration for now
-                                logger.info(f"Registered view: {view_name}")
-                        
-                        # For Kafka, register topics as streams
-                        elif 'kafka' in connector_id:
-                            # Register topics
-                            logger.info(f"Registered Kafka streams")
-                        
-                        # For REST API, register endpoints
-                        elif 'rest' in connector_id:
-                            logger.info(f"Registered REST API endpoints")
-                            
-                    except Exception as e:
-                        logger.warning(f"Failed to register {connector_id}: {e}")
+            logger.info(f"Executing federated query: {sql[:100]}...")
+            logger.info(f"Federation mode: {'MOCK DATA' if settings.use_mock_data else 'REAL DATA'}")
             
-            # Create mock DataFrames in Spark for demo
-            if 'from' in sql.lower():
-                # Create sample DataFrames and register them as views
-                sample_panels_data = [
-                    ("PANEL001", "Solar Farm A", "SolarTech", "ST-5000", 5.0, "2023-01-15", "active"),
-                    ("PANEL002", "Solar Farm B", "SolarTech", "ST-5000", 5.0, "2023-02-20", "active"),
-                    ("PANEL003", "Solar Farm A", "GreenPower", "GP-4500", 4.5, "2023-03-10", "active"),
-                    ("PANEL004", "Solar Farm C", "SolarTech", "ST-5000", 5.0, "2023-04-05", "maintenance"),
-                    ("PANEL005", "Solar Farm B", "GreenPower", "GP-4500", 4.5, "2023-05-12", "active"),
-                ]
-                panels_df = self.spark_engine.spark.createDataFrame(
-                    sample_panels_data,
-                    ["panel_id", "location_name", "manufacturer", "model", "capacity_kw", "installation_date", "status"]
-                )
-                panels_df.createOrReplaceTempView("postgres_solar_solar_panels")
-                
-                # Create Kafka telemetry data
-                import random
-                telemetry_data = [
-                    ("PANEL001", 4500.5 + random.uniform(-100, 100), 0.92, "2025-09-08T13:00:00"),
-                    ("PANEL002", 4200.3 + random.uniform(-100, 100), 0.89, "2025-09-08T13:00:00"),
-                    ("PANEL003", 4100.0 + random.uniform(-100, 100), 0.91, "2025-09-08T13:00:00"),
-                    ("PANEL004", 0.0, 0.0, "2025-09-08T13:00:00"),  # Maintenance
-                    ("PANEL005", 4300.0 + random.uniform(-100, 100), 0.90, "2025-09-08T13:00:00"),
-                ]
-                telemetry_df = self.spark_engine.spark.createDataFrame(
-                    telemetry_data,
-                    ["panel_id", "power_output_watts", "efficiency", "timestamp"]
-                )
-                telemetry_df.createOrReplaceTempView("kafka_solar_panel_telemetry")
-                
-                # Create REST API weather data
-                weather_data = [
-                    (25.3, 65.0, 850.5, 5.2),
-                ]
-                weather_df = self.spark_engine.spark.createDataFrame(
-                    weather_data,
-                    ["temperature_celsius", "humidity_percent", "solar_radiation_wm2", "wind_speed_ms"]
-                )
-                weather_df.createOrReplaceTempView("rest_api_weather_current")
-                
-                # Now execute the actual query with Spark SQL
-                # Replace table names in query to match our view names
-                modified_sql = sql.replace("postgres.solar.solar_panels", "postgres_solar_solar_panels")
-                modified_sql = modified_sql.replace("kafka.solar_panel_telemetry", "kafka_solar_panel_telemetry")
-                modified_sql = modified_sql.replace("rest_api.weather_current", "rest_api_weather_current")
-                
-                logger.info(f"Executing with Spark SQL: {modified_sql[:100]}")
-                
-                # Execute with Spark
-                result_df = self.spark_engine.spark.sql(modified_sql)
-                
-                # Collect results
-                results = result_df.limit(100).collect()
-                columns = result_df.columns
-                data = [row.asDict() for row in results]
-                
-                execution_time = (time.time() - start_time) * 1000
-                
-                # Get execution plan
-                execution_plan = result_df._jdf.queryExecution().toString()
-                
-                return FederationResult(
-                    data=data,
-                    columns=columns,
-                    row_count=len(data),
-                    execution_time_ms=execution_time,
-                    execution_plan=execution_plan[:500],  # First 500 chars
-                    statistics={
-                        "sources_accessed": len(re.findall(r'from\s+(\S+)', sql.lower())),
-                        "execution_engine": "Apache Spark"
-                    }
-                )
+            # Parse SQL to identify referenced tables
+            # Simple regex to find table references (can be improved with proper SQL parser)
+            # Pattern matches: datasource.`table-name` or datasource.schema.table
+            table_pattern = r'((?:postgres|kafka|rest_api)\.`[^`]+`|(?:postgres|kafka|rest_api)\.[\w.-]+(?:\.[\w-]+)?)'
+            referenced_tables = re.findall(table_pattern, sql, re.IGNORECASE)
+            # Convert to lowercase for consistency
+            referenced_tables = [ref.lower() for ref in referenced_tables]
+            logger.info(f"Found referenced tables: {referenced_tables}")
             
-            # Simple SELECT without FROM
-            return self.execute_simple_query(sql)
+            if settings.use_mock_data:
+                # Use mock data provider for demo/testing
+                from .mock_data_provider import MockDataProvider
+                logger.info("Using MOCK DATA mode (USE_MOCK_DATA=true)")
+                
+                mock_provider = MockDataProvider(self.spark_engine.spark)
+                views = mock_provider.register_all_mock_sources()
+                
+            else:
+                # Use real data provider for production
+                from .real_data_provider import RealDataProvider
+                logger.info("Using REAL DATA mode - connecting to actual data sources")
+                
+                real_provider = RealDataProvider(self.spark_engine.spark, self.connection_manager)
+                views = real_provider.register_real_data_sources(referenced_tables)
+                
+                if not views:
+                    raise Exception("Failed to register any real data sources. Check your connector configurations.")
+            
+            # Now execute the actual query with Spark SQL
+            # Replace table names in query to match our view names
+            
+            # Generic pattern to replace datasource.schema.table with datasource_schema_table
+            # This handles postgres.solar.table_name format
+            modified_sql = re.sub(r'\bpostgres\.(\w+)\.(\w+)\b', r'postgres_\1_\2', sql)
+            
+            # Handle kafka topics (which might have hyphens and backticks)
+            # Match kafka.`topic-name` or kafka.topic_name
+            modified_sql = re.sub(
+                r'\bkafka\.`([^`]+)`|\bkafka\.([\w-]+)',
+                lambda m: f"kafka_{(m.group(1) or m.group(2)).replace('-', '_').replace('`', '')}",
+                modified_sql
+            )
+            
+            # Handle rest_api endpoints (might have underscores or hyphens)
+            # Match rest_api.`endpoint-name` or rest_api.endpoint_name
+            modified_sql = re.sub(
+                r'\brest_api\.`([^`]+)`|\brest_api\.([\w_-]+)',
+                lambda m: f"rest_api_{(m.group(1) or m.group(2)).replace('-', '_').replace('`', '')}",
+                modified_sql
+            )
+            
+            logger.info(f"Executing with Spark SQL: {modified_sql[:100]}")
+            
+            # Execute with Spark
+            result_df = self.spark_engine.spark.sql(modified_sql)
+            
+            # Collect results
+            results = result_df.limit(100).collect()
+            columns = result_df.columns
+            data = [row.asDict() for row in results]
+            
+            execution_time = (time.time() - start_time) * 1000
+            
+            # Get execution plan
+            execution_plan = result_df._jdf.queryExecution().toString()
+            
+            return FederationResult(
+                data=data,
+                columns=columns,
+                row_count=len(data),
+                execution_time_ms=execution_time,
+                execution_plan=execution_plan[:500],  # First 500 chars
+                statistics={
+                    "sources_accessed": len(referenced_tables) if referenced_tables else 1,
+                    "execution_engine": "Apache Spark",
+                    "mode": "mock" if settings.use_mock_data else "real"
+                }
+            )
             
         except Exception as e:
             logger.error(f"Failed to execute federated query: {e}")

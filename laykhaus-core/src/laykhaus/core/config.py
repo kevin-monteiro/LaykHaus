@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     enable_cost_tracking: bool = Field(default=True)
     enable_ai_features: bool = Field(default=False)
     
+    # Federation Mode
+    use_mock_data: bool = Field(
+        default=False,
+        description="Use mock data instead of real connectors (for demo/testing only)"
+    )
+    
     # Testing
     test_mode: bool = Field(default=False)
     use_test_containers: bool = Field(default=False)

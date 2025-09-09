@@ -466,6 +466,10 @@ async def create_connector(request: Dict):
     Create a new connector configuration.
     """
     try:
+        # Ignore any connector_id from the request - always generate our own
+        if "id" in request or "connector_id" in request:
+            logger.warning("Ignoring connector_id from request - will generate new ID")
+        
         connector_type = request.get("type", "").lower()
         config = request.get("config", {})
         name = request.get("name", f"connector_{connector_type}")
@@ -476,8 +480,11 @@ async def create_connector(request: Dict):
         if connector_type == "postgresql":
             from laykhaus.connectors.postgres_connector import PostgreSQLConnector
             from laykhaus.connectors.base import ConnectionConfig
+            import secrets
             
-            connector_id = f"postgres_{name}".replace(" ", "_").lower()
+            # Generate unique ID with pgsql_ prefix
+            hex_suffix = secrets.token_hex(8)
+            connector_id = f"pgsql_{hex_suffix}"
             # Support both flat and nested config
             connection = config.get("connection", config)
             conn_config = ConnectionConfig(
@@ -495,8 +502,11 @@ async def create_connector(request: Dict):
         elif connector_type == "kafka":
             from laykhaus.connectors.kafka_connector import KafkaConnector
             from laykhaus.connectors.base import ConnectionConfig
+            import secrets
             
-            connector_id = f"kafka_{name}".replace(" ", "_").lower()
+            # Generate unique ID with kafka_ prefix
+            hex_suffix = secrets.token_hex(8)
+            connector_id = f"kafka_{hex_suffix}"
             # Kafka uses host:port format in brokers
             brokers = config.get("brokers", "localhost:9092")
             
@@ -519,8 +529,11 @@ async def create_connector(request: Dict):
         elif connector_type == "rest" or connector_type == "rest_api":
             from laykhaus.connectors.rest_api_connector import RESTAPIConnector
             from laykhaus.connectors.base import ConnectionConfig
+            import secrets
             
-            connector_id = f"rest_{name}".replace(" ", "_").lower()
+            # Generate unique ID with rest_ prefix
+            hex_suffix = secrets.token_hex(8)
+            connector_id = f"rest_{hex_suffix}"
             
             # Parse base URL or use host:port
             base_url = config.get("base_url")
@@ -571,6 +584,10 @@ async def update_connector(connector_id: str, request: Dict):
     Update an existing connector configuration.
     """
     try:
+        # Ignore any attempt to change the connector_id
+        if "id" in request or "connector_id" in request:
+            logger.warning("Ignoring connector_id in update request - ID cannot be changed")
+        
         # Remove the old connector
         old_connector = connection_manager.get_connector(connector_id)
         if not old_connector:
@@ -579,13 +596,16 @@ async def update_connector(connector_id: str, request: Dict):
         await old_connector.disconnect()
         await connection_manager.remove_connector(connector_id)
         
-        # Create new connector with updated config
+        # Recreate connector with same ID but updated config
         connector_type = request.get("type", "").lower()
         config = request.get("config", {})
         name = request.get("name", connector_id)
         
         # Log the received config for debugging
         logger.info(f"Updating connector {connector_id} with config: {config}")
+        
+        # IMPORTANT: Keep the existing connector_id for all updates
+        # The connector_id is immutable and cannot be changed
         
         if connector_type == "postgresql":
             from laykhaus.connectors.postgres_connector import PostgreSQLConnector
@@ -634,7 +654,7 @@ async def update_connector(connector_id: str, request: Dict):
             from laykhaus.connectors.rest_api_connector import RESTAPIConnector
             from laykhaus.connectors.base import ConnectionConfig
             
-            connector_id = f"rest_{name}".replace(" ", "_").lower()
+            # Keep the existing connector_id - don't regenerate for updates
             
             # Parse base URL or use host:port
             base_url = config.get("base_url")

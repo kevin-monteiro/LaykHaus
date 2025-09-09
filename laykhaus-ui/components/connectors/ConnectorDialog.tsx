@@ -199,6 +199,20 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
               </TabsList>
 
               <TabsContent value="general" className="space-y-4 mt-4">
+                {connector && connector.id && (
+                  <div className="space-y-2">
+                    <FormLabel>Connector ID</FormLabel>
+                    <Input 
+                      value={connector.id} 
+                      disabled 
+                      className="font-mono text-sm"
+                    />
+                    <FormDescription>
+                      Unique system-generated identifier (read-only)
+                    </FormDescription>
+                  </div>
+                )}
+
                 <FormField
                   control={form.control}
                   name="name"

@@ -82,7 +82,7 @@ export async function GET() {
         // Map based on connector type
         if (connector.type === 'postgresql') {
           return {
-            name: connector.id.replace('postgres_', '').replace('_postgresql', ''),
+            name: 'postgres',  // Always use 'postgres' for PostgreSQL connectors
             type: 'postgresql',
             tables: tables // Use the actual tables we fetched
           }
@@ -90,7 +90,7 @@ export async function GET() {
           // Get topics from connection config
           const topics = connector.config?.connection?.topics || connector.config?.topics || []
           return {
-            name: connector.id.replace('kafka_', ''),
+            name: 'kafka',  // Always use 'kafka' for Kafka connectors
             type: 'kafka',
             tables: topics.map((topic: string) => ({
               name: topic,
@@ -99,7 +99,7 @@ export async function GET() {
           }
         } else if (connector.type === 'rest_api' || connector.type === 'rest') {
           return {
-            name: connector.id.replace('rest_', '').replace('_rest_api', ''),
+            name: 'rest_api',  // Always use 'rest_api' for REST API connectors
             type: 'rest_api',
             tables: tables.length > 0 ? tables : [
               {

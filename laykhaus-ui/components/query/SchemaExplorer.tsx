@@ -27,40 +27,23 @@ export function SchemaExplorer({ onTableSelect, onFieldSelect }: SchemaExplorerP
     setExpandedNodes(newExpanded)
   }
   
-  // Mock data structure for demonstration
-  const mockSchemas = {
-    databases: [
-      {
-        name: 'postgres',
-        tables: [
-          {
-            name: 'customers',
-            columns: ['id', 'name', 'email', 'created_at'],
-          },
-          {
-            name: 'orders',
-            columns: ['id', 'customer_id', 'total', 'status', 'created_at'],
-          },
-        ],
-      },
-      {
-        name: 'kafka',
-        tables: [
-          {
-            name: 'events',
-            columns: ['event_id', 'event_type', 'payload', 'timestamp'],
-          },
-        ],
-      },
-    ],
-  }
-  
-  const data = schemas || mockSchemas
+  // Use only real data from the API
+  const data = schemas || { databases: [] }
   
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+  
+  if (!data.databases || data.databases.length === 0) {
+    return (
+      <div className="text-center py-4 text-muted-foreground text-sm">
+        <Database className="h-8 w-8 mx-auto mb-2 opacity-50" />
+        <p>No schemas available</p>
+        <p className="text-xs mt-1">Add connectors to see schemas</p>
       </div>
     )
   }
@@ -107,7 +90,11 @@ export function SchemaExplorer({ onTableSelect, onFieldSelect }: SchemaExplorerP
                         className="w-full justify-start"
                         onClick={() => {
                           toggleNode(`table-${db.name}-${table.name}`)
-                          onTableSelect?.(`${db.name}.${table.name}`)
+                          // Add backticks if table name contains special characters
+                          const tableName = table.name.includes('-') || table.name.includes(' ') 
+                            ? `\`${table.name}\`` 
+                            : table.name
+                          onTableSelect?.(`${db.name}.${tableName}`)
                         }}
                       >
                         {expandedNodes.has(`table-${db.name}-${table.name}`) ? (
@@ -127,7 +114,12 @@ export function SchemaExplorer({ onTableSelect, onFieldSelect }: SchemaExplorerP
                               variant="ghost"
                               size="sm"
                               className="w-full justify-start text-xs"
-                              onClick={() => onFieldSelect?.(`${db.name}.${table.name}.${column}`)}
+                              onClick={() => {
+                                const tableName = table.name.includes('-') || table.name.includes(' ') 
+                                  ? `\`${table.name}\`` 
+                                  : table.name
+                                onFieldSelect?.(`${db.name}.${tableName}.${column}`)
+                              }}
                             >
                               <Columns3 className="mr-2 h-3 w-3" />
                               <span className="font-mono">{column}</span>
