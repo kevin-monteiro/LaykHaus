@@ -219,7 +219,7 @@ The platform includes a complete solar energy management system demo:
 ## 🏗️ Project Structure
 
 ```
-demo-laykhaus/
+LaykHaus/
 ├── laykhaus-core/          # Core federation engine
 │   ├── src/laykhaus/       # Python source code
 │   │   ├── federation/     # Query federation logic
@@ -227,7 +227,7 @@ demo-laykhaus/
 │   │   ├── streaming/      # Kafka & Spark integration
 │   │   ├── ml/             # ML framework
 │   │   └── security/       # RBAC & data masking
-│   └── Dockerfile.simple   # Production Dockerfile
+│   └── Dockerfile          # Production Dockerfile
 │
 ├── laykhaus-ui/            # React/Next.js UI
 │   ├── app/                # Next.js app directory
@@ -237,7 +237,7 @@ demo-laykhaus/
 │   │   └── layout/         # Layout components
 │   └── Dockerfile          # Production Dockerfile
 │
-├── demo-data-generator/    # Demo data services
+├── mock-data-generator/    # Demo data services
 │   ├── postgres/           # PostgreSQL with sample data
 │   ├── rest-api/           # Mock REST API service
 │   └── generator/          # Kafka data generator
@@ -326,40 +326,3 @@ The platform includes comprehensive testing for all queries:
    FROM postgres.solar.solar_panels p
    JOIN kafka.solar_panel_telemetry k ON p.panel_id = k.panel_id;
    ```
-
-## 🚀 Performance
-
-- Supports **100+ concurrent queries**
-- Query pushdown optimization
-- Spark distributed processing
-- In-memory caching
-- Connection pooling
-
-## 🔐 Security Features
-
-- Role-Based Access Control (RBAC)
-- Data masking for sensitive fields
-- Secure connector credential storage
-- API authentication ready
-- Audit logging
-
-## 🤝 Contributing
-
-We welcome contributions! Please see CONTRIBUTING.md for details.
-
-## 📄 License
-
-This project is licensed under the MIT License - see LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- Apache Spark for distributed computing
-- FastAPI for high-performance APIs
-- Next.js for modern React applications
-- The open-source community
-
----
-
-**Built with ❤️ for the data community**
-
-For detailed setup instructions, see [DEMO_RUNSHEET.md](./DEMO_RUNSHEET.md)
