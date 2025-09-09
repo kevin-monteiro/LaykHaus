@@ -1,0 +1,109 @@
+services:
+  # Kafka for streaming data
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: demo-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    depends_on:
+      - zookeeper
+    networks:
+      - laykhaus-network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: demo-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - laykhaus-network
+
+  # PostgreSQL with demo data
+  demo-postgres:
+    image: postgres:15-alpine
+    container_name: demo-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: solar_energy_db
+      POSTGRES_USER: demo_user
+      POSTGRES_PASSWORD: demo_password
+    volumes:
+      - ./mock-data-generator/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - demo_postgres_data:/var/lib/postgresql/data
+    networks:
+      - laykhaus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # REST API Mock Server
+  rest-api-mock:
+    build:
+      context: ./mock-data-generator/rest-api
+      dockerfile: Dockerfile
+    container_name: demo-rest-api
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+    networks:
+      - laykhaus-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Data Generator Service
+  data-generator:
+    build:
+      context: ./mock-data-generator/generator
+      dockerfile: Dockerfile
+    container_name: mock-data-generator
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      POSTGRES_HOST: demo-postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: solar_energy_db
+      POSTGRES_USER: demo_user
+      POSTGRES_PASSWORD: demo_password
+      REST_API_URL: http://rest-api-mock:8080
+      GENERATE_INTERVAL_SECONDS: 5
+    depends_on:
+      kafka:
+        condition: service_healthy
+      demo-postgres:
+        condition: service_healthy
+      rest-api-mock:
+        condition: service_healthy
+    networks:
+      - laykhaus-network
+    volumes:
+      - ./mock-data-generator/generator:/app:ro
+
+networks:
+  laykhaus-network:
+    external: true
+    name: laykhaus-network
+
+volumes:
+  demo_postgres_data:

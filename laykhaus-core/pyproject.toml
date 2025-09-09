@@ -1,0 +1,112 @@
+[tool.poetry]
+name = "laykhaus-core"
+version = "0.1.0"
+description = "Federated Data Lakehouse Platform with SQL and GraphQL Interfaces"
+authors = ["LaykHaus Team"]
+readme = "README.md"
+packages = [{include = "laykhaus", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+# Web Framework & API
+fastapi = "^0.104.1"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+strawberry-graphql = {extras = ["fastapi"], version = "^0.211.0"}
+pydantic = "^2.5.0"
+pydantic-settings = "^2.0.3"
+
+# Data Processing
+pandas = "^2.1.3"
+pyarrow = "^14.0.1"
+numpy = "^1.26.2"
+
+# Kafka & Streaming
+confluent-kafka = "^2.3.0"
+aiokafka = "^0.10.0"
+
+# Observability
+prometheus-client = "^0.19.0"
+
+# Security
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+python-multipart = "^0.0.6"
+
+# Utilities
+httpx = "^0.25.2"
+structlog = "^23.2.0"
+python-dotenv = "^1.0.0"
+orjson = "^3.9.10"
+tenacity = "^8.2.3"
+
+[tool.poetry.group.dev.dependencies]
+# Testing
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+pytest-cov = "^4.1.0"
+pytest-mock = "^3.12.0"
+testcontainers = {extras = ["postgres", "kafka"], version = "^3.7.1"}
+faker = "^20.1.0"
+factory-boy = "^3.3.0"
+hypothesis = "^6.92.0"
+
+# Code Quality
+black = "^23.11.0"
+isort = "^5.13.0"
+pylint = "^3.0.3"
+mypy = "^1.7.1"
+types-passlib = "^1.7.7"
+
+# Performance Testing
+locust = "^2.19.0"
+
+# Security Testing
+safety = "^3.0.1"
+bandit = "^1.7.5"
+
+# Documentation
+mkdocs = "^1.5.3"
+mkdocs-material = "^9.5.0"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+strict_optional = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+markers = [
+    "performance: marks tests as performance tests",
+    "integration: marks tests as integration tests",
+    "chaos: marks tests as chaos engineering tests",
+    "cost: marks tests as cost regression tests",
+    "security: marks tests as security tests",
+    "ai_safety: marks tests as AI safety tests",
+]
+
+[tool.coverage.run]
+source = ["src/laykhaus"]
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

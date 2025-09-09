@@ -1,0 +1,183 @@
+services:
+  # Apache Spark Master (Internal Execution Engine)
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: laykhaus-spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    ports:
+      - "8081:8080"  # Spark Master Web UI (changed to avoid conflict with REST API mock)
+      - "7077:7077"  # Spark Master Port
+      - "4040:4040"  # Spark Application UI
+    volumes:
+      - spark_data:/opt/bitnami/spark/data
+    networks:
+      - laykhaus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Spark Worker 1
+  spark-worker-1:
+    image: bitnami/spark:3.5
+    container_name: laykhaus-spark-worker-1
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    depends_on:
+      - spark-master
+    volumes:
+      - spark_worker1_data:/opt/bitnami/spark/data
+    networks:
+      - laykhaus-network
+
+  # LaykHaus Core Platform
+  laykhaus-core:
+    build:
+      context: ./laykhaus-core
+      dockerfile: Dockerfile
+    container_name: laykhaus-core
+    ports:
+      - "8000:8000"  # REST/GraphQL API
+      - "5434:5434"  # PostgreSQL Wire Protocol (SQL Direct Access)
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SPARK_MASTER_URL: spark://spark-master:7077
+      PYTHONPATH: /app/src
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - ./laykhaus-core/src:/app/src:ro
+      - ./laykhaus-core/tests:/app/tests:ro
+      - spark_events:/tmp/spark-events
+      - laykhaus_data:/tmp/laykhaus  # Shared event log directory for Spark History Server
+    networks:
+      - laykhaus-network
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # LaykHaus UI Service
+  laykhaus-ui:
+    build:
+      context: ./laykhaus-ui
+      dockerfile: Dockerfile
+    container_name: laykhaus-ui
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_GRAPHQL_URL: http://localhost:8000/graphql
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000/ws
+      LAYKHAUS_INTERNAL_API_URL: http://laykhaus-core:8000
+    volumes:
+      - ./laykhaus-ui:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      laykhaus-core:
+        condition: service_healthy
+    networks:
+      - laykhaus-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional Services (use with profiles)
+  
+  # Spark Worker 2 (for distributed processing)
+  spark-worker-2:
+    image: bitnami/spark:3.5
+    container_name: laykhaus-spark-worker-2
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    depends_on:
+      - spark-master
+    volumes:
+      - spark_worker2_data:/opt/bitnami/spark/data
+    networks:
+      - laykhaus-network
+    profiles:
+      - distributed
+
+  # Jupyter Notebook for Spark Development
+  spark-notebook:
+    image: jupyter/pyspark-notebook:latest
+    container_name: laykhaus-spark-notebook
+    ports:
+      - "8888:8888"
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - JUPYTER_ENABLE_LAB=yes
+      - GRANT_SUDO=yes
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - spark_notebook_data:/home/jovyan/data
+    depends_on:
+      - spark-master
+    networks:
+      - laykhaus-network
+    profiles:
+      - development
+
+  # Spark History Server
+  spark-history:
+    image: bitnami/spark:3.5
+    container_name: laykhaus-spark-history
+    environment:
+      - SPARK_MODE=history-server
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=/tmp/spark-events
+    ports:
+      - "18080:18080"
+    volumes:
+      - spark_events:/tmp/spark-events
+    networks:
+      - laykhaus-network
+    profiles:
+      - monitoring
+
+
+networks:
+  laykhaus-network:
+    driver: bridge
+    name: laykhaus-network
+
+volumes:
+  # postgres_data:  # Not used - commented out
+  # redis_data:     # Not used - commented out
+  spark_data:
+  spark_worker1_data:
+  spark_worker2_data:
+  spark_notebook_data:
+  spark_events:
+  laykhaus_data:

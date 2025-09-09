@@ -1,0 +1,54 @@
+# Testing Framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+pytest-timeout==2.2.0
+pytest-xdist==3.5.0
+pytest-docker==2.0.1
+pytest-benchmark==4.0.0
+
+# Test Utilities
+httpx==0.25.2
+faker==20.1.0
+factory-boy==3.3.0
+hypothesis==6.92.1
+
+# Mocking and Fixtures
+responses==0.24.1
+freezegun==1.4.0
+pytest-freezegun==0.4.2
+
+# Performance Testing
+locust==2.19.1
+memory-profiler==0.61.0
+
+# Code Quality
+black==23.12.1
+isort==5.13.2
+flake8==7.0.0
+mypy==1.7.1
+pylint==3.0.3
+
+# Test Data Generation
+numpy==1.26.2
+pandas==2.1.4
+
+# Database Testing
+pytest-postgresql==5.0.0
+sqlalchemy-utils==0.41.1
+
+# API Testing
+pydantic==2.5.3
+jsonschema==4.20.0
+
+# Async Testing Support
+aioresponses==0.7.6
+asynctest==0.13.0
+
+# Coverage Reporting
+coverage[toml]==7.3.4
+pytest-html==4.1.1
+
+# Documentation Testing
+pytest-doctest==0.0.2

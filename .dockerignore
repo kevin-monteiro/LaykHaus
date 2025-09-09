@@ -1,0 +1,120 @@
+# LaykHaus .dockerignore
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+CONTRIBUTING.md
+LICENSE
+docs/
+*.md
+
+# Development files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+*.sublime-*
+.editorconfig
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+tests/
+test/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+dist/
+build/
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+jenkins/
+azure-pipelines.yml
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+
+# Data files (except necessary configs)
+*.csv
+*.parquet
+*.db
+*.sqlite
+*.sqlite3
+/data/
+!laykhaus-connectors.json
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+__tests__/
+*.test.*
+*.spec.*
+
+# Build artifacts
+dist/
+build/
+target/
+*.jar
+*.war
+*.ear
+
+# IDE specific
+.project
+.classpath
+.settings/
+*.iml
+.factorypath
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
