@@ -153,11 +153,9 @@ class SparkFederatedExecutor:
         start_time = time.time()
         
         try:
-            from ..core.config import settings
             import re
             
             logger.info(f"Executing federated query: {sql[:100]}...")
-            logger.info(f"Federation mode: {'MOCK DATA' if settings.use_mock_data else 'REAL DATA'}")
             
             # Parse SQL to identify referenced tables
             # Simple regex to find table references (can be improved with proper SQL parser)
@@ -168,24 +166,15 @@ class SparkFederatedExecutor:
             referenced_tables = [ref.lower() for ref in referenced_tables]
             logger.info(f"Found referenced tables: {referenced_tables}")
             
-            if settings.use_mock_data:
-                # Use mock data provider for demo/testing
-                from .mock_data_provider import MockDataProvider
-                logger.info("Using MOCK DATA mode (USE_MOCK_DATA=true)")
-                
-                mock_provider = MockDataProvider(self.spark_engine.spark)
-                views = mock_provider.register_all_mock_sources()
-                
-            else:
-                # Use real data provider for production
-                from .real_data_provider import RealDataProvider
-                logger.info("Using REAL DATA mode - connecting to actual data sources")
-                
-                real_provider = RealDataProvider(self.spark_engine.spark, self.connection_manager)
-                views = real_provider.register_real_data_sources(referenced_tables)
-                
-                if not views:
-                    raise Exception("Failed to register any real data sources. Check your connector configurations.")
+            # Use real data provider
+            from .real_data_provider import RealDataProvider
+            logger.info("Connecting to actual data sources")
+            
+            real_provider = RealDataProvider(self.spark_engine.spark, self.connection_manager)
+            views = real_provider.register_real_data_sources(referenced_tables)
+            
+            if not views:
+                raise Exception("Failed to register any data sources. Check your connector configurations.")
             
             # Now execute the actual query with Spark SQL
             # Replace table names in query to match our view names
@@ -233,8 +222,7 @@ class SparkFederatedExecutor:
                 execution_plan=execution_plan[:500],  # First 500 chars
                 statistics={
                     "sources_accessed": len(referenced_tables) if referenced_tables else 1,
-                    "execution_engine": "Apache Spark",
-                    "mode": "mock" if settings.use_mock_data else "real"
+                    "execution_engine": "Apache Spark"
                 }
             )
             

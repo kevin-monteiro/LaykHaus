@@ -115,13 +115,9 @@ class SolarDataGenerator:
             'maintenance-events'          # Maintenance events
         ]
         
-        for topic in topics:
-            try:
-                # Send a test message to create topic
-                self.kafka_producer.send(topic, {'test': 'message'})
-                print(f"📊 Created/verified Kafka topic: {topic}")
-            except Exception as e:
-                print(f"Warning creating topic {topic}: {e}")
+        # Topics will be auto-created when first message is sent
+        # No need to send test messages
+        print(f"📊 Kafka topics will be auto-created: {', '.join(topics)}")
 
     def generate_panel_telemetry(self):
         """Generate real-time solar panel telemetry data."""

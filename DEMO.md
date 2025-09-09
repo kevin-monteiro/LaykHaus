@@ -118,24 +118,162 @@ After starting, the console will display connector configurations. Navigate to h
 1. Go to Query Builder: http://localhost:3000/query
 2. The Schema Explorer on the left should show:
    - **postgres** → solar → tables (solar_panels, energy_production, etc.)
-   - **kafka** → topics (solar_panel_telemetry, weather_stream, etc.)
-   - **rest_api** → endpoints (panels, weather_current, etc.)
+   - **kafka** → topics (solar-panel-telemetry, weather-stream, energy-consumption, etc.)
+   - **rest_api** → endpoints (panels, weather, consumption, etc.)
+
+#### Test Individual Data Sources
+
+**PostgreSQL Query:**
+```sql
+-- Get active solar panels with their specifications
+SELECT panel_id, manufacturer, model, capacity_watts, efficiency_percentage, location_name
+FROM postgres.solar.solar_panels 
+WHERE status = 'active' 
+LIMIT 5;
+```
+
+**Kafka Streaming Query:**
+```sql
+-- Get real-time solar panel telemetry
+SELECT panel_id, power_output_watts, temperature_celsius, 
+       efficiency_percentage, timestamp
+FROM kafka.`solar-panel-telemetry`
+LIMIT 5;
+
+-- Get current weather conditions
+SELECT station_id, temperature_celsius, solar_radiation_wm2, 
+       cloud_cover_percentage, timestamp
+FROM kafka.`weather-stream`
+LIMIT 5;
+```
+
+**REST API Query:**
+```sql
+-- Get panel data from REST API
+SELECT panel_id, serial_number, location, 
+       current_output_watts, efficiency, temperature
+FROM rest_api.panels
+LIMIT 5;
+```
 
 ### Step 4: Execute Federated Queries
 
-Try this example query that joins data from all three sources:
-
+#### Simple Federated Query (PostgreSQL + Kafka)
 ```sql
--- Real-time panel performance with weather correlation
+-- Join static panel data with real-time telemetry
 SELECT 
     p.panel_id,
     p.location_name,
-    k.power_output_watts as current_power,
-    w.temperature_celsius as current_temp,
-    w.solar_radiation_wm2 as solar_radiation
+    p.capacity_watts,
+    k.power_output_watts,
+    k.temperature_celsius,
+    k.timestamp
 FROM postgres.solar.solar_panels p
-JOIN kafka.solar_panel_telemetry k ON p.panel_id = k.panel_id
-JOIN rest_api.weather_current w ON TRUE
+JOIN kafka.`solar-panel-telemetry` k ON p.panel_id = k.panel_id
 WHERE p.status = 'active'
 LIMIT 10;
+```
+
+#### Complex Aggregation Query
+```sql
+-- Analyze panel performance by manufacturer
+SELECT 
+    p.manufacturer,
+    COUNT(DISTINCT p.panel_id) as panel_count,
+    AVG(k.temperature_celsius) as avg_temperature,
+    MAX(k.power_output_watts) as max_power_output,
+    AVG(k.efficiency_percentage) as avg_efficiency
+FROM postgres.solar.solar_panels p
+JOIN kafka.`solar-panel-telemetry` k ON p.panel_id = k.panel_id
+WHERE p.status = 'active'
+GROUP BY p.manufacturer
+ORDER BY panel_count DESC;
+```
+
+#### Multi-Source Federation (PostgreSQL + Kafka Weather + Kafka Telemetry)
+```sql
+-- Correlate panel performance with weather conditions
+SELECT 
+    k.panel_id,
+    k.power_output_watts,
+    k.temperature_celsius as panel_temp,
+    w.temperature_celsius as ambient_temp,
+    w.solar_radiation_wm2,
+    w.cloud_cover_percentage
+FROM kafka.`solar-panel-telemetry` k
+JOIN kafka.`weather-stream` w ON 1=1
+WHERE k.panel_id IN (
+    SELECT panel_id 
+    FROM postgres.solar.solar_panels 
+    WHERE manufacturer = 'SunPower'
+)
+LIMIT 10;
+```
+
+#### Customer Energy Analysis (PostgreSQL + Kafka Consumption)
+```sql
+-- Analyze customer energy usage patterns
+SELECT 
+    c.customer_id,
+    c.name as customer_name,
+    c.plan_type,
+    ec.current_usage_kw,
+    ec.solar_generation_kw,
+    ec.battery_charge_percentage,
+    ec.cost_per_hour
+FROM postgres.solar.customers c
+JOIN kafka.`energy-consumption` ec ON c.customer_id = ec.customer_id
+WHERE c.status = 'active'
+LIMIT 10;
+```
+
+### Step 5: Advanced Federation Features
+
+#### Time-Series Analysis
+```sql
+-- Analyze energy production trends
+SELECT 
+    DATE(ep.timestamp) as date,
+    COUNT(DISTINCT ep.panel_id) as active_panels,
+    SUM(ep.power_output_watts) as total_power,
+    AVG(ep.efficiency_actual) as avg_efficiency
+FROM postgres.solar.energy_production ep
+WHERE ep.timestamp >= CURRENT_DATE - INTERVAL '7 days'
+GROUP BY DATE(ep.timestamp)
+ORDER BY date DESC;
+```
+
+#### Real-Time Alert Monitoring
+```sql
+-- Monitor critical alerts with panel details
+SELECT 
+    a.alert_id,
+    p.panel_id,
+    p.location_name,
+    a.alert_type,
+    a.severity,
+    a.message,
+    a.triggered_at
+FROM postgres.solar.alerts a
+JOIN postgres.solar.solar_panels p ON a.panel_id = p.panel_id
+WHERE a.severity IN ('critical', 'warning')
+  AND a.triggered_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour'
+ORDER BY a.triggered_at DESC
+LIMIT 20;
+```
+
+#### Performance Benchmarking
+```sql
+-- Compare REST API data with Kafka streaming data
+SELECT 
+    'REST API' as source,
+    COUNT(*) as record_count,
+    AVG(efficiency) as avg_efficiency
+FROM rest_api.panels
+UNION ALL
+SELECT 
+    'Kafka Stream' as source,
+    COUNT(*) as record_count,
+    AVG(efficiency_percentage) as avg_efficiency
+FROM kafka.`solar-panel-telemetry`;
 ```
