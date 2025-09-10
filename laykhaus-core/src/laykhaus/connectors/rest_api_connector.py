@@ -210,13 +210,32 @@ class RESTAPIConnector(BaseConnector):
     async def get_schema(self) -> Dict[str, Any]:
         """
         Get available endpoints and their schemas.
-        This would typically come from OpenAPI/Swagger spec.
+        Schema can be provided in connector configuration or discovered automatically.
         """
-        schema = {
-            "endpoints": []
-        }
+        # Check if schema was provided in extra_params during connector registration
+        if self.config.extra_params and 'schema' in self.config.extra_params:
+            return self.config.extra_params['schema']
         
-        # Try to fetch OpenAPI spec
+        # Try to discover schema from OpenAPI spec
+        schema = await self._discover_schema()
+        if schema:
+            return schema
+        
+        # Return minimal default schema
+        return {
+            "endpoints": {
+                "default": {
+                    "description": "REST API endpoint",
+                    "endpoint": "/",
+                    "method": "GET"
+                }
+            }
+        }
+    
+    async def _discover_schema(self) -> Optional[Dict[str, Any]]:
+        """
+        Try to discover schema from OpenAPI/Swagger spec.
+        """
         openapi_endpoints = ["/openapi.json", "/swagger.json", "/api-docs", "/docs/api.json"]
         
         for endpoint in openapi_endpoints:
@@ -224,29 +243,77 @@ class RESTAPIConnector(BaseConnector):
                 response = await self.client.get(endpoint)
                 if response.status_code == 200:
                     spec = response.json()
-                    # Parse OpenAPI spec to extract endpoints
-                    if "paths" in spec:
-                        for path, methods in spec["paths"].items():
-                            for method, details in methods.items():
-                                schema["endpoints"].append({
-                                    "path": path,
-                                    "method": method.upper(),
-                                    "description": details.get("summary", ""),
-                                    "parameters": details.get("parameters", [])
-                                })
-                    break
+                    # Parse OpenAPI spec to extract clean schema
+                    return self._parse_openapi_spec(spec)
             except:
                 continue
         
-        # If no OpenAPI spec found, return basic info
-        if not schema["endpoints"]:
-            schema["endpoints"].append({
-                "path": "/",
-                "method": "GET",
-                "description": "Base endpoint"
-            })
+        return None
+    
+    def _parse_openapi_spec(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Parse OpenAPI spec into a clean schema for SQL queries.
+        """
+        schema = {"endpoints": {}}
         
-        return schema
+        if "paths" in spec:
+            for path, methods in spec["paths"].items():
+                # Skip internal/technical endpoints
+                if path in ["/", "/health", "/openapi.json", "/docs", "/redoc"]:
+                    continue
+                
+                # Extract table name from path (e.g., /api/users -> users)
+                table_name = path.split('/')[-1].replace('-', '_')
+                if '{' in table_name:  # Skip parameterized endpoints
+                    continue
+                
+                for method, details in methods.items():
+                    if method.upper() == "GET":
+                        schema["endpoints"][table_name] = {
+                            "endpoint": path,
+                            "method": "GET",
+                            "description": details.get("summary", "")
+                        }
+                        
+                        # Try to extract response schema
+                        if "responses" in details and "200" in details["responses"]:
+                            response = details["responses"]["200"]
+                            if "content" in response and "application/json" in response["content"]:
+                                if "schema" in response["content"]["application/json"]:
+                                    response_schema = response["content"]["application/json"]["schema"]
+                                    # Extract column information if available
+                                    columns = self._extract_columns_from_schema(response_schema)
+                                    if columns:
+                                        schema["endpoints"][table_name]["columns"] = columns
+        
+        return schema if schema["endpoints"] else None
+    
+    def _extract_columns_from_schema(self, schema_def: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """
+        Extract column definitions from OpenAPI schema.
+        """
+        columns = {}
+        
+        # Handle array responses
+        if schema_def.get("type") == "array" and "items" in schema_def:
+            schema_def = schema_def["items"]
+        
+        # Extract properties
+        if "properties" in schema_def:
+            for prop_name, prop_def in schema_def["properties"].items():
+                prop_type = prop_def.get("type", "string")
+                # Map OpenAPI types to SQL types
+                sql_type = {
+                    "integer": "integer",
+                    "number": "float",
+                    "string": "varchar",
+                    "boolean": "boolean",
+                    "array": "json",
+                    "object": "json"
+                }.get(prop_type, "varchar")
+                columns[prop_name] = sql_type
+        
+        return columns if columns else None
     
     async def health_check(self) -> HealthStatus:
         """Check REST API health."""

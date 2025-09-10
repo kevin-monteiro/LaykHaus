@@ -33,42 +33,49 @@ export async function GET() {
             const schemaData = await schemaResponse.json()
             // Parse the nested schema structure
             if (schemaData.schema) {
+              // Check if it's REST API endpoints format
+              if (schemaData.schema.endpoints) {
+                // Handle REST API endpoints
+                const endpoints = schemaData.schema.endpoints
+                Object.keys(endpoints).forEach(endpointName => {
+                  const endpoint = endpoints[endpointName]
+                  const columns = endpoint.columns 
+                    ? Object.keys(endpoint.columns) 
+                    : []
+                  
+                  tables.push({
+                    name: endpointName,
+                    columns: columns
+                  })
+                })
+              } 
               // For PostgreSQL, schema is nested by schema name (e.g., "solar")
-              const schemas = Object.keys(schemaData.schema)
-              for (const schemaName of schemas) {
-                const schemaTables = schemaData.schema[schemaName]
-                
-                // Handle REST API endpoints array
-                if (Array.isArray(schemaTables)) {
-                  schemaTables.forEach((endpoint: any) => {
-                    if (endpoint && endpoint.path) {
+              else {
+                const schemas = Object.keys(schemaData.schema)
+                for (const schemaName of schemas) {
+                  const schemaTables = schemaData.schema[schemaName]
+                  
+                  // Handle PostgreSQL tables object
+                  if (schemaTables && typeof schemaTables === 'object') {
+                    Object.keys(schemaTables).forEach(tableName => {
+                      const tableInfo = schemaTables[tableName]
+                      // Parse column information
+                      const columns = tableInfo.columns?.map((col: string) => {
+                        try {
+                          const parsed = JSON.parse(col)
+                          return parsed.column_name
+                        } catch {
+                          return col
+                        }
+                      }) || []
+                      
                       tables.push({
-                        name: endpoint.path.replace('/api/', ''),
-                        columns: endpoint.fields || []
+                        name: `${schemaName}.${tableName}`,
+                        columns: columns,
+                        row_count: tableInfo.row_count
                       })
-                    }
-                  })
-                }
-                // Handle PostgreSQL tables object
-                else if (schemaTables && typeof schemaTables === 'object') {
-                  Object.keys(schemaTables).forEach(tableName => {
-                    const tableInfo = schemaTables[tableName]
-                    // Parse column information
-                    const columns = tableInfo.columns?.map((col: string) => {
-                      try {
-                        const parsed = JSON.parse(col)
-                        return parsed.column_name
-                      } catch {
-                        return col
-                      }
-                    }) || []
-                    
-                    tables.push({
-                      name: `${schemaName}.${tableName}`,
-                      columns: columns,
-                      row_count: tableInfo.row_count
                     })
-                  })
+                  }
                 }
               }
             } else {
@@ -101,20 +108,7 @@ export async function GET() {
           return {
             name: 'rest_api',  // Always use 'rest_api' for REST API connectors
             type: 'rest_api',
-            tables: tables.length > 0 ? tables : [
-              {
-                name: 'panels',
-                columns: ['panel_id', 'status', 'current_output', 'temperature', 'last_maintenance']
-              },
-              {
-                name: 'weather_current',
-                columns: ['temperature_celsius', 'humidity_percent', 'solar_radiation_wm2', 'wind_speed_ms']
-              },
-              {
-                name: 'consumption_summary',
-                columns: ['total_consumption_kw', 'solar_generation_kw', 'grid_usage_kw', 'battery_charge_percent']
-              }
-            ]
+            tables: tables // Use actual schema, no fallback
           }
         }
         

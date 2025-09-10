@@ -158,8 +158,8 @@ def get_panel_history(panel_id: int, hours: int = 24):
 # Weather endpoints
 @app.get("/api/weather/current")
 def get_current_weather():
-    """Get current weather data from all stations."""
-    stations = []
+    """Get current weather data - returns array format for SQL compatibility."""
+    weather_data = []
     locations = [
         ("Phoenix", 33.4484, -112.0740),
         ("Los Angeles", 34.0522, -118.2437),
@@ -169,22 +169,17 @@ def get_current_weather():
     ]
     
     for i, (city, lat, lon) in enumerate(locations, 1):
-        stations.append({
+        weather_data.append({
             "station_id": i,
-            "location": city,
-            "latitude": lat,
-            "longitude": lon,
-            "timestamp": datetime.now().isoformat(),
             "temperature_celsius": random.uniform(20, 40),
             "humidity_percentage": random.uniform(20, 80),
             "wind_speed_ms": random.uniform(0, 20),
-            "wind_direction_degrees": random.randint(0, 360),
             "solar_radiation_wm2": random.uniform(500, 1000) if 6 <= datetime.now().hour <= 18 else 0,
             "cloud_cover_percentage": random.randint(0, 100),
-            "uv_index": random.uniform(0, 11) if 6 <= datetime.now().hour <= 18 else 0
+            "timestamp": datetime.now().isoformat()
         })
     
-    return {"stations": stations, "timestamp": datetime.now().isoformat()}
+    return {"weather": weather_data, "count": len(weather_data)}
 
 @app.get("/api/weather/forecast")
 def get_weather_forecast(days: int = 7):
@@ -208,28 +203,20 @@ def get_weather_forecast(days: int = 7):
 # Energy Consumption endpoints
 @app.get("/api/consumption/summary")
 def get_consumption_summary():
-    """Get energy consumption summary."""
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "current": {
-            "total_consumption_kw": random.uniform(1000, 5000),
-            "solar_generation_kw": random.uniform(800, 4000) if 6 <= datetime.now().hour <= 18 else 0,
-            "grid_import_kw": random.uniform(0, 1000),
-            "grid_export_kw": random.uniform(0, 500) if 6 <= datetime.now().hour <= 18 else 0
-        },
-        "today": {
-            "consumption_kwh": random.uniform(10000, 50000),
-            "generation_kwh": random.uniform(8000, 40000),
-            "self_consumption_percentage": random.uniform(60, 95),
-            "cost_saved": random.uniform(100, 500)
-        },
-        "customers": {
-            "total": 50,
-            "residential": 30,
-            "commercial": 15,
-            "industrial": 5
-        }
-    }
+    """Get energy consumption summary - returns array format for SQL compatibility."""
+    # Return array of customer consumption records for SQL-style queries
+    consumption_data = []
+    for customer_id in range(1, 11):  # Return 10 customer records
+        consumption_data.append({
+            "customer_id": customer_id,
+            "current_usage_kw": random.uniform(0.5, 10),
+            "daily_consumption_kwh": random.uniform(10, 100),
+            "peak_demand_kw": random.uniform(5, 20),
+            "grid_import_kw": random.uniform(0, 5),
+            "solar_generation_kw": random.uniform(0, 8) if 6 <= datetime.now().hour <= 18 else 0,
+            "timestamp": datetime.now().isoformat()
+        })
+    return {"consumption": consumption_data, "count": len(consumption_data)}
 
 @app.get("/api/consumption/customers/{customer_id}")
 def get_customer_consumption(customer_id: int):
@@ -251,26 +238,21 @@ def get_customer_consumption(customer_id: int):
 # Analytics endpoints
 @app.get("/api/analytics/production")
 def get_production_analytics():
-    """Get production analytics."""
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "summary": {
-            "total_panels": 100,
-            "active_panels": 95,
-            "total_capacity_mw": 0.4,
-            "current_production_mw": random.uniform(0.2, 0.35) if 6 <= datetime.now().hour <= 18 else 0
-        },
-        "performance": {
+    """Get production analytics - returns array format for SQL compatibility."""
+    # Return last 7 days of production data
+    production_data = []
+    for days_ago in range(7):
+        date = datetime.now().date() - timedelta(days=days_ago)
+        production_data.append({
+            "date": str(date),
+            "total_production_kwh": random.uniform(8000, 12000),
+            "peak_output_kw": random.uniform(350, 400),
             "average_efficiency": random.uniform(18, 21),
-            "capacity_factor": random.uniform(20, 30),
-            "availability": random.uniform(95, 99.9)
-        },
-        "trends": {
-            "daily_trend": random.choice(["increasing", "stable", "decreasing"]),
-            "weekly_change_percentage": random.uniform(-5, 10),
-            "monthly_change_percentage": random.uniform(-3, 8)
-        }
-    }
+            "operational_hours": random.randint(10, 14),
+            "panels_active": random.randint(90, 100)
+        })
+    
+    return {"production": production_data, "count": len(production_data)}
 
 @app.get("/api/analytics/roi")
 def get_roi_analytics():
@@ -318,7 +300,7 @@ def get_recent_alerts(limit: int = 10):
             "resolved": random.choice([True, False])
         })
     
-    return {"alerts": alerts, "total": len(alerts)}
+    return {"alerts": alerts, "count": len(alerts)}
 
 # Maintenance endpoints
 @app.get("/api/maintenance/schedule")

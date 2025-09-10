@@ -261,9 +261,20 @@ class RealDataProvider:
             protocol = "https" if connector.config.port == 443 else "http"
             base_url = f"{protocol}://{connector.config.host}:{connector.config.port}"
             
-            # Construct endpoint path dynamically
-            # Convert underscores to slashes for nested paths (e.g., weather_current -> weather/current)
-            endpoint_path = f"/api/{endpoint.replace('_', '/')}"
+            # Get endpoint path from schema if available
+            endpoint_path = None
+            if hasattr(connector.config, 'extra_params') and connector.config.extra_params:
+                schema = connector.config.extra_params.get('schema', {})
+                endpoints = schema.get('endpoints', {})
+                if endpoint in endpoints:
+                    endpoint_path = endpoints[endpoint].get('endpoint')
+                    logger.info(f"Using endpoint path from schema: {endpoint_path}")
+            
+            # Fallback: Construct endpoint path dynamically if not in schema
+            if not endpoint_path:
+                # Convert underscores to slashes for nested paths (e.g., weather_current -> weather/current)
+                endpoint_path = f"/api/{endpoint.replace('_', '/')}"
+                logger.info(f"Using dynamic endpoint path: {endpoint_path}")
             
             # Make HTTP request to the endpoint
             endpoint_url = f"{base_url}{endpoint_path}"
