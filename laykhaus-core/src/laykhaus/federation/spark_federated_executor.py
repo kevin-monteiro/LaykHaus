@@ -158,9 +158,8 @@ class SparkFederatedExecutor:
             logger.info(f"Executing federated query: {sql[:100]}...")
             
             # Parse SQL to identify referenced tables
-            # Simple regex to find table references (can be improved with proper SQL parser)
-            # Pattern matches: datasource.`table-name` or datasource.schema.table
-            table_pattern = r'((?:postgres|kafka|rest_api)\.`[^`]+`|(?:postgres|kafka|rest_api)\.[\w.-]+(?:\.[\w-]+)?)'
+            # Pattern matches: datasource.schema.table or datasource.endpoint or datasource.`table-name`
+            table_pattern = r'((?:postgres)\.[\w.-]+\.[\w-]+|(?:kafka|rest_api)\.[\w.-]+|(?:postgres|kafka|rest_api)\.`[^`]+`)'
             referenced_tables = re.findall(table_pattern, sql, re.IGNORECASE)
             # Convert to lowercase for consistency
             referenced_tables = [ref.lower() for ref in referenced_tables]

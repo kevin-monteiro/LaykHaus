@@ -5,13 +5,11 @@ LaykHaus is a modern federated data platform that enables seamless querying acro
 ## 🌟 Key Features
 
 - **🔗 Federated Query Engine**: Query multiple data sources with a single SQL statement
-- **🎯 Smart Query Optimization**: Automatic query pushdown and optimization
-- **🌊 Real-time Streaming**: Native support for Kafka and streaming data
-- **📊 Visual Query Builder**: User-friendly interface with Schema Explorer
-- **🔐 Enterprise Security**: Built-in RBAC and data masking capabilities
 - **⚡ Apache Spark Integration**: Distributed processing for large-scale analytics
+- **📊 Visual Query Builder**: User-friendly interface with Schema Explorer
 - **🎨 Modern UI**: React/Next.js interface with real-time updates
 - **🔌 Extensible Connectors**: PostgreSQL, Kafka, REST API, and more
+- **🔗 GraphQL Interface**: GraphQL API for flexible data queries (future migration path)
 
 ## ⚡ Quick Start
 
@@ -50,7 +48,7 @@ make demo
 │                  http://localhost:8000                      │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │  • Federation Engine  • Connector Manager           │    │
-│  │  • REST Gateway       • GraphQL Gateway             │    │
+│  │  • REST API          • GraphQL Gateway             │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                               │
