@@ -31,6 +31,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { ConnectorConfig } from '@/lib/types/connector'
 import { Play, Save, Eye, EyeOff } from 'lucide-react'
 import { useCreateConnector, useUpdateConnector, useTestConnector } from '@/lib/hooks/useConnectors'
@@ -53,6 +54,7 @@ const connectorSchema = z.object({
   baseUrl: z.string().optional(),
   authType: z.string().optional(),
   apiKey: z.string().optional(),
+  restApiSchema: z.string().optional(),
 })
 
 type ConnectorFormData = z.infer<typeof connectorSchema>
@@ -68,6 +70,7 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
   const [isTesting, setIsTesting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
+  const [schemaError, setSchemaError] = useState<string | null>(null)
   const createConnector = useCreateConnector()
   const updateConnector = useUpdateConnector()
   const testConnector = useTestConnector()
@@ -106,6 +109,10 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
         formData.baseUrl = connector.config.connection?.base_url
         formData.authType = connector.config.authentication?.type || 'none'
         formData.apiKey = (connector.config.authentication as any)?.api_key
+        // Load existing schema if present
+        if (connector.config.extra_params?.schema) {
+          formData.restApiSchema = JSON.stringify(connector.config.extra_params.schema, null, 2)
+        }
       }
       
       form.reset(formData)
@@ -144,14 +151,42 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
           group_id: data.groupId || 'laykhaus-consumer',
         }
       } else if (data.type === 'rest_api') {
+        // Parse URL to get host and port for backend
+        let host = 'localhost'
+        let port = 80
+        if (data.baseUrl) {
+          try {
+            const url = new URL(data.baseUrl)
+            host = url.hostname
+            port = parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80)
+          } catch {
+            // If URL parsing fails, use the baseUrl as is
+          }
+        }
+        
         connectorData.config = {
+          host: host,
+          port: port,
           base_url: data.baseUrl,
           auth_type: data.authType || 'none',
         }
+        
         // Add auth config if needed
         if (data.authType === 'api_key' && data.apiKey) {
           connectorData.config.auth_config = {
             api_key: data.apiKey,
+          }
+        }
+        
+        // Add schema if provided
+        if (data.restApiSchema) {
+          try {
+            const parsedSchema = JSON.parse(data.restApiSchema)
+            connectorData.config.extra_params = { schema: parsedSchema }
+            setSchemaError(null)
+          } catch (e) {
+            setSchemaError('Invalid JSON format in schema configuration')
+            return
           }
         }
       }
@@ -502,9 +537,52 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
               </TabsContent>
 
               <TabsContent value="advanced" className="space-y-4 mt-4">
-                <p className="text-sm text-muted-foreground">
-                  Advanced configuration options will be available here
-                </p>
+                {connectorType === 'rest_api' && (
+                  <FormField
+                    control={form.control}
+                    name="restApiSchema"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Schema Configuration (Optional)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder={
+`{
+  "endpoints": {
+    "users": {
+      "description": "User data",
+      "endpoint": "/api/users",
+      "method": "GET",
+      "columns": {
+        "id": "integer",
+        "name": "varchar",
+        "email": "varchar"
+      }
+    }
+  }
+}`
+                            }
+                            className="font-mono text-sm min-h-[300px]"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Optional JSON schema to define endpoints and columns for SQL queries.
+                          If not provided, the connector will try to auto-discover from OpenAPI spec.
+                        </FormDescription>
+                        {schemaError && (
+                          <p className="text-sm text-destructive mt-2">{schemaError}</p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                {connectorType !== 'rest_api' && (
+                  <p className="text-sm text-muted-foreground">
+                    Advanced configuration options for {connectorType} will be available here
+                  </p>
+                )}
               </TabsContent>
             </Tabs>
 

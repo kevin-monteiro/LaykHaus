@@ -113,6 +113,50 @@ After starting, the console will display connector configurations. Navigate to h
 - **Base URL**: http://demo-rest-api:8080 (for Docker) or http://localhost:8080 (for local)
 - **Auth Type**: None
 
+##### REST API Schema Configuration (Optional)
+
+The REST API connector supports three modes:
+
+1. **Automatic Discovery**: If your API provides OpenAPI/Swagger spec at `/openapi.json` or `/swagger.json`
+2. **Manual Schema**: Provide explicit schema in connector configuration
+3. **Default**: Basic endpoint discovery without detailed schema
+
+For manual schema configuration in the UI (Advanced tab), use this JSON format:
+
+```json
+{
+  "endpoints": {
+    "panels": {
+      "description": "Solar panel data",
+      "endpoint": "/api/panels",
+      "method": "GET",
+      "columns": {
+        "panel_id": "integer",
+        "location": "varchar",
+        "capacity_watts": "integer",
+        "efficiency": "float",
+        "temperature": "float"
+      }
+    },
+    "weather": {
+      "description": "Weather data",
+      "endpoint": "/api/weather/current",
+      "method": "GET",
+      "columns": {
+        "station_id": "integer",
+        "temperature_celsius": "float",
+        "humidity_percentage": "float",
+        "solar_radiation_wm2": "float"
+      }
+    }
+  }
+}
+```
+
+Note: When using the API directly, wrap this in `config.extra_params.schema`.
+
+This keeps domain-specific schema separate from the platform core, making LaykHaus truly generic.
+
 ### Step 3: Verify Schema Explorer
 
 1. Go to Query Builder: http://localhost:3000/query

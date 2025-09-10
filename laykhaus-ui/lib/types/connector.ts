@@ -39,6 +39,7 @@ export interface ConnectorConfig {
     authentication: AuthConfig | Record<string, any>
     schema?: SchemaMapping
     options?: ConnectorOptions
+    extra_params?: Record<string, any>
   }
   testResults?: TestResult[]
   metadata: {

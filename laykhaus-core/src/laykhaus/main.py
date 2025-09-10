@@ -548,14 +548,21 @@ async def create_connector(request: Dict):
                 port = config.get("port", 80)
                 base_url = f"http://{host}:{port}"
             
+            # Build extra_params including any schema provided
+            extra_params = {
+                "base_url": base_url,
+                "auth_type": config.get("auth_type", "none"),
+                "auth_config": config.get("auth_config", {})
+            }
+            
+            # Include any extra_params from the config (like schema)
+            if "extra_params" in config:
+                extra_params.update(config["extra_params"])
+            
             conn_config = ConnectionConfig(
                 host=host,
                 port=port,
-                extra_params={
-                    "base_url": base_url,
-                    "auth_type": config.get("auth_type", "none"),
-                    "auth_config": config.get("auth_config", {})
-                }
+                extra_params=extra_params
             )
             connector = RESTAPIConnector(connector_id, conn_config)
             await connector.connect()
