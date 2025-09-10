@@ -1,0 +1,28 @@
+# Web Framework & API
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.0.3
+
+# Database support
+sqlalchemy==2.0.23
+asyncpg==0.29.0
+
+# Data Processing & Spark
+pyarrow==14.0.1
+pyspark==3.5.6
+sqlparse==0.4.4
+
+# Kafka connector support
+aiokafka==0.10.0
+
+# Observability
+prometheus-client==0.19.0
+
+# Utilities
+httpx==0.25.2
+structlog==23.2.0
+python-dotenv==1.0.0
+orjson==3.9.10
+tenacity==8.2.3
+requests>=2.31.0

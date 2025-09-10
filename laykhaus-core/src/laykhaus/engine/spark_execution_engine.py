@@ -53,7 +53,7 @@ class SparkExecutionEngine:
                 # Enable UI for monitoring
                 ("spark.ui.enabled", "true"),
                 # JDBC and Kafka driver configuration
-                ("spark.jars", "/app/jars/postgresql-42.7.1.jar,/app/jars/spark-sql-kafka-0-10_2.12-3.5.0.jar,/app/jars/kafka-clients-3.5.0.jar,/app/jars/commons-pool2-2.11.1.jar,/app/jars/spark-token-provider-kafka-0-10_2.12-3.5.0.jar"),
+                ("spark.jars", "/app/jars/postgresql-42.7.1.jar,/app/jars/spark-sql-kafka-0-10_2.12-3.5.6.jar,/app/jars/kafka-clients-3.5.0.jar,/app/jars/commons-pool2-2.11.1.jar,/app/jars/spark-token-provider-kafka-0-10_2.12-3.5.6.jar"),
                 ("spark.driver.extraClassPath", "/app/jars/*"),
                 ("spark.executor.extraClassPath", "/app/jars/*"),
                 # Event logging for History Server (commented out for now)
