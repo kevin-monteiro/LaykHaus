@@ -12,6 +12,7 @@ import logging
 
 from laykhaus.core.config import get_settings
 from laykhaus.connectors.base import BaseConnector
+from .config import SparkConfig
 
 logger = logging.getLogger(__name__)
 
@@ -30,44 +31,29 @@ class SparkExecutionEngine:
     def _initialize_spark(self):
         """Initialize Spark session with optimized settings for federation."""
         try:
-            conf = SparkConf()
-            
             # Use configured SPARK_MASTER_URL or fallback to local mode
             master_url = self.settings.SPARK_MASTER_URL or "local[2]"
             
-            conf.setAll([
-                ("spark.app.name", "LaykHaus-Federation-Engine"),
-                ("spark.master", master_url),
-                ("spark.sql.adaptive.enabled", "true"),
-                ("spark.sql.adaptive.coalescePartitions.enabled", "true"),
-                ("spark.sql.cbo.enabled", "true"),
-                ("spark.sql.cbo.joinReorder.enabled", "true"),
-                ("spark.serializer", "org.apache.spark.serializer.KryoSerializer"),
-                ("spark.sql.execution.arrow.pyspark.enabled", "true"),
-                # Federation optimizations
-                ("spark.sql.crossJoin.enabled", "true"),
-                # Memory settings
-                ("spark.driver.memory", "1g"),
-                ("spark.driver.maxResultSize", "1g"),
-                ("spark.sql.shuffle.partitions", "10"),
-                # Enable UI for monitoring
-                ("spark.ui.enabled", "true"),
-                # JDBC and Kafka driver configuration
-                ("spark.jars", "/app/jars/postgresql-42.7.1.jar,/app/jars/spark-sql-kafka-0-10_2.12-3.5.6.jar,/app/jars/kafka-clients-3.5.0.jar,/app/jars/commons-pool2-2.11.1.jar,/app/jars/spark-token-provider-kafka-0-10_2.12-3.5.6.jar"),
-                ("spark.driver.extraClassPath", "/app/jars/*"),
-                ("spark.executor.extraClassPath", "/app/jars/*"),
-                # Event logging for History Server (commented out for now)
-                # ("spark.eventLog.enabled", "true"),
-                # ("spark.eventLog.dir", "/tmp/spark-events"),
-                # Set executor configs for cluster mode
-                ("spark.executor.instances", "1" if master_url.startswith("local") else "2"),
-                ("spark.cores.max", "2" if master_url.startswith("local") else "4"),
-            ])
+            # Get configuration from SparkConfig
+            spark_settings = SparkConfig.get_spark_conf(master_url)
             
+            # Add dynamic settings based on mode
+            if master_url.startswith("local"):
+                spark_settings["spark.executor.instances"] = "1"
+                spark_settings["spark.cores.max"] = "2"
+            else:
+                spark_settings["spark.executor.instances"] = "2"
+                spark_settings["spark.cores.max"] = "4"
+            
+            # Create Spark configuration
+            conf = SparkConf()
+            conf.setAll(list(spark_settings.items()))
+            
+            # Create Spark session
             self.spark = SparkSession.builder.config(conf=conf).getOrCreate()
             self.spark.sparkContext.setLogLevel("WARN")
             
-            logger.info("Spark execution engine initialized successfully")
+            logger.info(f"Spark execution engine initialized successfully (version {SparkConfig.SPARK_VERSION})")
             
         except Exception as e:
             logger.warning(f"Failed to initialize Spark (will continue without it): {e}")
@@ -334,8 +320,108 @@ class SparkExecutionEngine:
         """Get the physical execution plan for debugging/optimization."""
         return df.explain(extended=True)
     
+    def execute_sql(self, sql: str, limit: Optional[int] = None) -> tuple:
+        """
+        Execute SQL query and return results.
+        
+        This encapsulates all Spark SQL execution logic that was previously
+        in the federation executor.
+        
+        Args:
+            sql: SQL query to execute
+            limit: Optional row limit for safety
+            
+        Returns:
+            Tuple of (data, columns, execution_plan)
+        """
+        if not self.spark:
+            raise RuntimeError("Spark session not initialized")
+        
+        # Execute query
+        result_df = self.spark.sql(sql)
+        
+        # Apply limit if specified
+        if limit:
+            result_df = result_df.limit(limit)
+        
+        # Collect results
+        results = result_df.collect()
+        columns = result_df.columns
+        data = [row.asDict() for row in results]
+        
+        # Get execution plan
+        execution_plan = result_df._jdf.queryExecution().toString()
+        
+        return data, columns, execution_plan
+    
+    def create_temp_view(self, df: DataFrame, view_name: str) -> None:
+        """
+        Create a temporary view from a DataFrame.
+        
+        Args:
+            df: Spark DataFrame
+            view_name: Name for the temporary view
+        """
+        df.createOrReplaceTempView(view_name)
+    
+    def create_dataframe_from_data(self, data: List[Dict]) -> DataFrame:
+        """
+        Create a Spark DataFrame from Python data.
+        
+        Args:
+            data: List of dictionaries to convert
+            
+        Returns:
+            Spark DataFrame
+        """
+        if not self.spark:
+            raise RuntimeError("Spark session not initialized")
+        
+        if not data:
+            return self.spark.createDataFrame([], StructType([]))
+        
+        return self.spark.createDataFrame(data)
+    
+    def get_spark_statistics(self) -> Dict[str, Any]:
+        """
+        Get Spark engine statistics.
+        
+        Returns:
+            Dictionary with Spark metrics and configuration
+        """
+        if not self.spark:
+            return {"error": "Spark not initialized"}
+        
+        return {
+            "version": self.spark.version,
+            "app_name": self.spark.sparkContext.appName,
+            "app_id": self.spark.sparkContext.applicationId,
+            "master": self.spark.sparkContext.master,
+            "executor_memory": self.spark.conf.get("spark.executor.memory", "default"),
+            "executor_cores": self.spark.conf.get("spark.executor.cores", "default"),
+            "executors": self.spark.sparkContext.statusTracker().getExecutorInfos(),
+            "default_parallelism": self.spark.sparkContext.defaultParallelism,
+            "cached_tables": list(self.spark.catalog.listTables()) if hasattr(self.spark, 'catalog') else []
+        }
+    
+    def is_initialized(self) -> bool:
+        """Check if Spark session is initialized and active."""
+        return self.spark is not None
+    
+    def get_spark_session(self) -> SparkSession:
+        """
+        Get the Spark session directly for advanced operations.
+        
+        Returns:
+            SparkSession instance
+        """
+        if not self.spark:
+            raise RuntimeError("Spark session not initialized")
+        return self.spark
+    
     def stop(self):
         """Stop the Spark session."""
         if self.spark:
             self.spark.stop()
             logger.info("Spark execution engine stopped")
+            self.spark = None

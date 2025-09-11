@@ -390,3 +390,104 @@ class RESTAPIConnector(BaseConnector):
                 errors.append("Username and password are required for basic auth")
         
         return errors
+    
+    async def create_spark_dataframe(self, spark, endpoint: str):
+        """
+        Create a Spark DataFrame from a REST API endpoint.
+        This encapsulates the integration-specific logic for REST APIs.
+        
+        Args:
+            spark: SparkSession instance
+            endpoint: API endpoint to fetch data from
+            
+        Returns:
+            Spark DataFrame with the API response data
+        """
+        import aiohttp
+        import asyncio
+        
+        # Fetch data from REST endpoint
+        url = f"{self.base_url}/{endpoint}"
+        headers = self._get_auth_headers()
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    # Handle different response formats
+                    if isinstance(data, dict):
+                        # If response has a data field, use it
+                        if 'data' in data:
+                            data = data['data']
+                        elif 'results' in data:
+                            data = data['results']
+                        elif 'items' in data:
+                            data = data['items']
+                        else:
+                            # Wrap single object in list
+                            data = [data]
+                    
+                    # Create DataFrame from JSON data
+                    if data:
+                        return spark.createDataFrame(data)
+                    else:
+                        # Return empty DataFrame with proper schema
+                        from pyspark.sql.types import StructType
+                        return spark.createDataFrame([], StructType([]))
+                else:
+                    raise Exception(f"REST API request failed with status {response.status}")
+    
+    def create_spark_dataframe_sync(self, spark, endpoint: str):
+        """
+        Synchronous wrapper for create_spark_dataframe.
+        Spark integration often needs synchronous methods.
+        """
+        import requests
+        
+        # Use synchronous requests instead of async to avoid event loop conflicts
+        url = f"{self.base_url}/api/{endpoint}"  # Note: added /api/ prefix
+        
+        # Build auth headers based on auth type
+        headers = {"Accept": "application/json"}
+        if self.auth_type == "bearer":
+            headers["Authorization"] = f"Bearer {self.auth_config.get('token', '')}"
+        elif self.auth_type == "api_key":
+            headers["X-API-Key"] = self.auth_config.get("api_key", "")
+        elif self.auth_type == "basic":
+            import base64
+            username = self.auth_config.get("username", "")
+            password = self.auth_config.get("password", "")
+            creds = base64.b64encode(f"{username}:{password}".encode()).decode()
+            headers["Authorization"] = f"Basic {creds}"
+        
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Handle different response formats
+            if isinstance(data, dict):
+                # If response has a data field, use it
+                if 'data' in data:
+                    data = data['data']
+                elif 'results' in data:
+                    data = data['results']
+                elif 'items' in data:
+                    data = data['items']
+                else:
+                    # Wrap single object in list
+                    data = [data]
+            
+            # Ensure data is a list
+            if not isinstance(data, list):
+                data = [data]
+            
+            # Create DataFrame from data
+            if data:
+                return spark.createDataFrame(data)
+            else:
+                # Return empty DataFrame
+                from pyspark.sql.types import StructType
+                return spark.createDataFrame([], StructType([]))
+        else:
+            raise Exception(f"Failed to fetch data from {url}: {response.status_code}")
