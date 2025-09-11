@@ -378,3 +378,58 @@ class KafkaConnector(BaseConnector):
             raise RuntimeError("Producer not initialized")
         
         await self.producer.send(topic, value=value, key=key)
+    
+    def create_spark_dataframe(self, spark, topic: str):
+        """
+        Create a Spark DataFrame for a Kafka topic.
+        This encapsulates the integration-specific logic for Kafka.
+        
+        Args:
+            spark: SparkSession instance
+            topic: Kafka topic name
+            
+        Returns:
+            Spark DataFrame for streaming from Kafka topic
+        """
+        # For batch reading (last 1000 messages as snapshot)
+        df = spark.read \
+            .format("kafka") \
+            .option("kafka.bootstrap.servers", f"{self.config.host}:{self.config.port}") \
+            .option("subscribe", topic) \
+            .option("startingOffsets", "earliest") \
+            .option("endingOffsets", "latest") \
+            .option("maxOffsetsPerTrigger", 1000) \
+            .load()
+        
+        # Parse JSON values
+        from pyspark.sql.functions import col, from_json, get_json_object
+        from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType
+        
+        # Define a flexible schema for the JSON data
+        # This should be made more dynamic in production
+        parsed_df = df.select(
+            col("key").cast("string").alias("key"),
+            col("value").cast("string").alias("raw_value"),
+            col("timestamp"),
+            col("topic"),
+            col("partition"),
+            col("offset")
+        )
+        
+        # Extract common fields from JSON value using get_json_object
+        # This allows flexibility for different message structures
+        result_df = parsed_df.select(
+            "*",
+            get_json_object(col("raw_value"), "$.panel_id").alias("panel_id"),
+            get_json_object(col("raw_value"), "$.timestamp").alias("timestamp"),
+            get_json_object(col("raw_value"), "$.power_output_watts").cast("double").alias("power_output_watts"),
+            get_json_object(col("raw_value"), "$.voltage").cast("double").alias("voltage"),
+            get_json_object(col("raw_value"), "$.current_amps").cast("double").alias("current_amps"),
+            get_json_object(col("raw_value"), "$.temperature_celsius").cast("double").alias("temperature_celsius"),
+            get_json_object(col("raw_value"), "$.efficiency_percentage").cast("double").alias("efficiency_percentage"),
+            get_json_object(col("raw_value"), "$.daily_energy_kwh").cast("double").alias("daily_energy_kwh"),
+            get_json_object(col("raw_value"), "$.inverter_status").alias("inverter_status"),
+            get_json_object(col("raw_value"), "$.grid_frequency_hz").cast("double").alias("grid_frequency_hz")
+        ).drop("raw_value", "key", "topic", "partition", "offset")
+        
+        return result_df

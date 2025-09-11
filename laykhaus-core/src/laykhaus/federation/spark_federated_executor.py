@@ -1,24 +1,47 @@
 """
-Spark-based Federated Query Executor
-This replaces the basic executor with Spark-powered federation
+Spark-based Federated Query Executor.
+
+This module orchestrates federated query execution across heterogeneous data sources.
+It delegates Spark-specific operations to the SparkExecutionEngine while focusing on
+federation logic such as SQL parsing, transformation, and data source registration.
+
+Key Responsibilities:
+- Parse SQL to identify data sources
+- Transform SQL for Spark view compatibility  
+- Coordinate data source registration
+- Orchestrate query execution through Spark engine
+
+The actual Spark operations (SQL execution, DataFrame creation, etc.) are handled
+by the SparkExecutionEngine in the integrations layer for better separation of concerns.
+
+Author: LaykHaus Team
+Version: 2.0.0
 """
 
 from typing import Any, Dict, List, Optional
 import logging
 from dataclasses import dataclass
 
-from laykhaus.engine.spark_execution_engine import SparkExecutionEngine
-from laykhaus.federation.parser import QueryParser
-from laykhaus.federation.planner import QueryPlanner
-from laykhaus.federation.optimizer import QueryOptimizer
+from laykhaus.integrations.spark import SparkExecutionEngine
 from laykhaus.connectors.connection_manager import connection_manager
 
+# Configure module logger
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class FederationResult:
-    """Result from federated query execution."""
+    """
+    Container for federated query execution results.
+    
+    Attributes:
+        data: List of dictionaries containing query result rows
+        columns: List of column names in the result set
+        row_count: Total number of rows returned
+        execution_time_ms: Query execution time in milliseconds
+        execution_plan: Optional Spark execution plan for debugging
+        statistics: Optional dictionary of execution statistics
+    """
     data: List[Dict[str, Any]]
     columns: List[str]
     row_count: int
@@ -29,196 +52,96 @@ class FederationResult:
 
 class SparkFederatedExecutor:
     """
-    Executes federated queries using Apache Spark as the execution engine.
-    This is the core of LaykHaus's Zetaris-like capabilities.
+    Orchestrates federated query execution using Spark as the execution engine.
+    
+    This class focuses on federation logic while delegating Spark-specific operations
+    to the SparkExecutionEngine. It handles SQL parsing, transformation, and 
+    coordination of data source registration.
+    
+    Attributes:
+        spark_engine: SparkExecutionEngine instance for Spark operations
+        connection_manager: Manager for all data source connections
     """
     
     def __init__(self):
+        """Initialize the federated executor with Spark engine and connection manager."""
         self.spark_engine = SparkExecutionEngine()
-        self.parser = QueryParser()
-        self.planner = QueryPlanner()
-        self.optimizer = QueryOptimizer()
         self.connection_manager = connection_manager
-    
-    async def load_connector_to_spark(self, connector_id: str, table_name: str = None) -> bool:
-        """
-        Load data from a connector into Spark as a DataFrame.
-        """
-        try:
-            connector = self.connection_manager.get_connector(connector_id)
-            if not connector:
-                logger.warning(f"Connector {connector_id} not found")
-                return False
-            
-            # Get data from connector based on type
-            if 'postgres' in connector_id:
-                # Execute query to get data
-                query = f"SELECT * FROM solar.{table_name}" if table_name else "SELECT 1"
-                result = await connector.execute_query(query)
-                
-                # Convert to Spark DataFrame
-                if result and result.rows:
-                    df = self.spark_engine.spark.createDataFrame(result.rows)
-                    df.createOrReplaceTempView(f"postgres_{table_name}" if table_name else "postgres_test")
-                    logger.info(f"Loaded {table_name} from PostgreSQL into Spark")
-                    return True
-                    
-            elif 'kafka' in connector_id:
-                # For Kafka, create a streaming DataFrame
-                logger.info(f"Kafka connector {connector_id} registered")
-                return True
-                
-            elif 'rest' in connector_id:
-                # For REST API, fetch data
-                logger.info(f"REST API connector {connector_id} registered")
-                return True
-                
-            return False
-            
-        except Exception as e:
-            logger.error(f"Failed to load connector {connector_id}: {e}")
-            return False
-    
-    def execute_simple_query(self, sql: str) -> FederationResult:
-        """
-        Execute a simple SQL query using Spark SQL.
-        """
-        import time
-        start_time = time.time()
-        
-        try:
-            # Initialize Spark if needed
-            if not hasattr(self.spark_engine, 'spark') or self.spark_engine.spark is None:
-                logger.warning("Spark not initialized, returning mock data")
-                # Return mock data for demo
-                return FederationResult(
-                    data=[{"result": 1, "status": "Spark initializing"}],
-                    columns=["result", "status"],
-                    row_count=1,
-                    execution_time_ms=10,
-                    execution_plan=None,
-                    statistics=None
-                )
-            
-            # Execute with Spark SQL
-            logger.info(f"Executing SQL with Spark: {sql[:100]}")
-            result_df = self.spark_engine.spark.sql(sql)
-            
-            # Collect results (limit for safety)
-            results = result_df.limit(1000).collect()
-            columns = result_df.columns
-            data = [row.asDict() for row in results]
-            
-            execution_time = (time.time() - start_time) * 1000
-            
-            return FederationResult(
-                data=data,
-                columns=columns,
-                row_count=len(data),
-                execution_time_ms=execution_time,
-                execution_plan=None,
-                statistics=None
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to execute query with Spark: {e}")
-            # Return mock data for demo
-            return FederationResult(
-                data=[{"error": str(e), "query": sql[:50]}],
-                columns=["error", "query"],
-                row_count=1,
-                execution_time_ms=0,
-                execution_plan=None,
-                statistics=None
-            )
     
     def execute_federated_query(self, sql: str, context: Optional[Dict[str, Any]] = None) -> FederationResult:
         """
         Execute a federated SQL query across multiple data sources.
         
-        This is the main entry point that:
-        1. Parses the SQL
-        2. Creates an optimized query plan
-        3. Executes using Spark across multiple sources
-        4. Returns unified results
+        This method orchestrates the federation process:
+        1. Parse SQL to identify referenced tables
+        2. Register data sources as Spark views
+        3. Transform SQL for Spark compatibility
+        4. Delegate execution to Spark engine
+        5. Package and return results
         
         Args:
-            sql: SQL query string
-            context: Optional execution context (user, permissions, etc.)
+            sql: SQL query string with fully-qualified table names
+                 Format: datasource.schema.table or datasource.`endpoint`
+            context: Optional execution context (reserved for future use)
             
         Returns:
-            FederationResult with data and metadata
+            FederationResult: Query results with execution metadata
+            
+        Raises:
+            Exception: If no data sources can be registered or query fails
+            
+        Example:
+            sql = '''
+                SELECT p.panel_id, k.power_output
+                FROM postgres.solar.panels p
+                JOIN kafka.`panel-telemetry` k ON p.panel_id = k.panel_id
+                WHERE p.status = 'active'
+            '''
+            result = executor.execute_federated_query(sql)
         """
         import time
+        import re
+        
         start_time = time.time()
         
         try:
-            import re
-            
             logger.info(f"Executing federated query: {sql[:100]}...")
             
-            # Parse SQL to identify referenced tables
+            # ========== STEP 1: Parse SQL to identify data sources ==========
             # Pattern matches: datasource.schema.table or datasource.endpoint or datasource.`table-name`
             table_pattern = r'((?:postgres)\.[\w.-]+\.[\w-]+|(?:kafka|rest_api)\.[\w.-]+|(?:postgres|kafka|rest_api)\.`[^`]+`)'
             referenced_tables = re.findall(table_pattern, sql, re.IGNORECASE)
-            # Convert to lowercase for consistency
             referenced_tables = [ref.lower() for ref in referenced_tables]
             logger.info(f"Found referenced tables: {referenced_tables}")
             
-            # Use real data provider
-            from .real_data_provider import RealDataProvider
-            logger.info("Connecting to actual data sources")
+            # ========== STEP 2: Register data sources ==========
+            from .data_provider import DataProvider
+            logger.info("Registering data sources")
             
-            real_provider = RealDataProvider(self.spark_engine.spark, self.connection_manager)
-            views = real_provider.register_real_data_sources(referenced_tables)
+            # Get Spark session from engine for data provider
+            spark_session = self.spark_engine.get_spark_session()
+            data_provider = DataProvider(spark_session, self.connection_manager)
+            views = data_provider.register_data_sources(referenced_tables)
             
             if not views:
                 raise Exception("Failed to register any data sources. Check your connector configurations.")
             
-            # Now execute the actual query with Spark SQL
-            # Replace table names in query to match our view names
+            # ========== STEP 3: Transform SQL for Spark views ==========
+            modified_sql = self._transform_sql_for_spark(sql)
+            logger.info(f"Transformed SQL for Spark: {modified_sql[:100]}")
             
-            # Generic pattern to replace datasource.schema.table with datasource_schema_table
-            # This handles postgres.solar.table_name format
-            modified_sql = re.sub(r'\bpostgres\.(\w+)\.(\w+)\b', r'postgres_\1_\2', sql)
+            # ========== STEP 4: Execute query with Spark engine ==========
+            data, columns, execution_plan = self.spark_engine.execute_sql(modified_sql, limit=100)
             
-            # Handle kafka topics (which might have hyphens and backticks)
-            # Match kafka.`topic-name` or kafka.topic_name
-            modified_sql = re.sub(
-                r'\bkafka\.`([^`]+)`|\bkafka\.([\w-]+)',
-                lambda m: f"kafka_{(m.group(1) or m.group(2)).replace('-', '_').replace('`', '')}",
-                modified_sql
-            )
-            
-            # Handle rest_api endpoints (might have underscores or hyphens)
-            # Match rest_api.`endpoint-name` or rest_api.endpoint_name
-            modified_sql = re.sub(
-                r'\brest_api\.`([^`]+)`|\brest_api\.([\w_-]+)',
-                lambda m: f"rest_api_{(m.group(1) or m.group(2)).replace('-', '_').replace('`', '')}",
-                modified_sql
-            )
-            
-            logger.info(f"Executing with Spark SQL: {modified_sql[:100]}")
-            
-            # Execute with Spark
-            result_df = self.spark_engine.spark.sql(modified_sql)
-            
-            # Collect results
-            results = result_df.limit(100).collect()
-            columns = result_df.columns
-            data = [row.asDict() for row in results]
-            
+            # ========== STEP 5: Package results ==========
             execution_time = (time.time() - start_time) * 1000
-            
-            # Get execution plan
-            execution_plan = result_df._jdf.queryExecution().toString()
             
             return FederationResult(
                 data=data,
                 columns=columns,
                 row_count=len(data),
                 execution_time_ms=execution_time,
-                execution_plan=execution_plan[:500],  # First 500 chars
+                execution_plan=execution_plan[:500],  # Truncate for readability
                 statistics={
                     "sources_accessed": len(referenced_tables) if referenced_tables else 1,
                     "execution_engine": "Apache Spark"
@@ -229,115 +152,64 @@ class SparkFederatedExecutor:
             logger.error(f"Failed to execute federated query: {e}")
             raise
     
-    def execute_streaming_federation(self, 
-                                    stream_sql: str,
-                                    batch_sources: Dict[str, str],
-                                    output_config: Dict[str, Any]) -> Any:
+    def _transform_sql_for_spark(self, sql: str) -> str:
         """
-        Execute federated query combining streaming and batch sources.
-        This is a key Zetaris capability - unifying stream and batch.
+        Transform SQL to use Spark view naming conventions.
+        
+        Spark views use underscores instead of dots and remove special characters.
+        This method transforms the SQL to match the registered view names.
         
         Args:
-            stream_sql: SQL for streaming source
-            batch_sources: Dictionary of batch source SQLs
-            output_config: Configuration for output sink
+            sql: Original SQL with datasource.schema.table format
             
         Returns:
-            Streaming query handle
+            str: Transformed SQL with Spark view names
+            
+        Transformations:
+            - postgres.schema.table -> postgres_schema_table
+            - kafka.`topic-name` -> kafka_topic_name  
+            - rest_api.endpoint -> rest_api_endpoint
         """
-        try:
-            # Parse streaming SQL
-            stream_plan = self.parser.parse(stream_sql)
-            
-            # Load streaming source
-            stream_connector = self.connection_manager.get_connector(
-                stream_plan["source"]["connector_id"]
-            )
-            stream_df = self.spark_engine._load_kafka_source(stream_connector)
-            
-            # Register stream as temp view
-            stream_df.createOrReplaceTempView("stream_data")
-            
-            # Load and register batch sources
-            for name, batch_sql in batch_sources.items():
-                batch_plan = self.parser.parse(batch_sql)
-                batch_connector = self.connection_manager.get_connector(
-                    batch_plan["source"]["connector_id"]
-                )
-                batch_df = self.spark_engine._load_data_source(batch_connector)
-                batch_df.createOrReplaceTempView(name)
-            
-            # Execute federated streaming query
-            federated_sql = f"""
-                SELECT 
-                    s.*,
-                    b.enrichment_data
-                FROM stream_data s
-                LEFT JOIN batch_reference b
-                ON s.key = b.key
-            """
-            
-            result_stream = self.spark_engine.spark.sql(federated_sql)
-            
-            # Configure output sink
-            query = result_stream.writeStream \
-                .outputMode(output_config.get("mode", "append")) \
-                .trigger(processingTime=output_config.get("trigger", "10 seconds")) \
-                .format(output_config.get("format", "console")) \
-                .start()
-            
-            return query
-            
-        except Exception as e:
-            logger.error(f"Failed to execute streaming federation: {e}")
-            raise
+        import re
+        
+        # Transform postgres.schema.table to postgres_schema_table
+        modified_sql = re.sub(r'\bpostgres\.(\w+)\.(\w+)\b', r'postgres_\1_\2', sql)
+        
+        # Transform kafka.`topic-name` or kafka.topic_name to kafka_topic_name
+        modified_sql = re.sub(
+            r'\bkafka\.`([^`]+)`|\bkafka\.([\w-]+)',
+            lambda m: f"kafka_{(m.group(1) or m.group(2)).replace('-', '_').replace('`', '')}",
+            modified_sql
+        )
+        
+        # Transform rest_api.`endpoint` or rest_api.endpoint to rest_api_endpoint  
+        modified_sql = re.sub(
+            r'\brest_api\.`([^`]+)`|\brest_api\.([\w_-]+)',
+            lambda m: f"rest_api_{(m.group(1) or m.group(2)).replace('-', '_').replace('`', '')}",
+            modified_sql
+        )
+        
+        return modified_sql
     
-    def execute_ml_enrichment(self,
-                             base_sql: str,
-                             ml_model_path: str,
-                             features: List[str],
-                             prediction_col: str = "prediction") -> FederationResult:
+    def execute_simple_query(self, sql: str) -> FederationResult:
         """
-        Execute federated query with ML model enrichment.
-        Another key Zetaris capability - ML-enriched queries.
+        Execute a simple SQL query against already-registered Spark views.
+        
+        This bypasses the federation logic and executes directly against Spark.
+        Useful for queries against single sources or pre-joined views.
         
         Args:
-            base_sql: Base SQL query
-            ml_model_path: Path to trained ML model
-            features: Feature columns for ML model
-            prediction_col: Name for prediction column
+            sql: SQL query string to execute
             
         Returns:
-            FederationResult with ML predictions added
+            FederationResult: Query results with execution metadata
         """
-        from pyspark.ml import PipelineModel
         import time
-        
         start_time = time.time()
         
         try:
-            # Execute base federated query
-            base_result = self.execute_federated_query(base_sql)
-            
-            # Convert results back to Spark DataFrame
-            df = self.spark_engine.spark.createDataFrame(base_result.data)
-            
-            # Load ML model
-            model = PipelineModel.load(ml_model_path)
-            
-            # Apply ML model for enrichment
-            predictions_df = model.transform(df)
-            
-            # Select original columns plus prediction
-            result_df = predictions_df.select(
-                *df.columns,
-                prediction_col
-            )
-            
-            # Collect enriched results
-            results = result_df.collect()
-            columns = result_df.columns
-            data = [row.asDict() for row in results]
+            # Delegate to Spark engine
+            data, columns, execution_plan = self.spark_engine.execute_sql(sql, limit=1000)
             
             execution_time = (time.time() - start_time) * 1000
             
@@ -346,66 +218,75 @@ class SparkFederatedExecutor:
                 columns=columns,
                 row_count=len(data),
                 execution_time_ms=execution_time,
-                statistics={"ml_enriched": True}
+                execution_plan=None,  # Skip plan for simple queries
+                statistics=None
             )
             
         except Exception as e:
-            logger.error(f"Failed to execute ML enrichment: {e}")
+            logger.error(f"Failed to execute simple query: {e}")
             raise
     
-    def explain_federation_plan(self, sql: str) -> Dict[str, Any]:
+    async def load_connector_to_spark(self, connector_id: str, table_name: str = None) -> bool:
         """
-        Explain the federation execution plan without running the query.
-        Useful for debugging and optimization.
+        Load data from a connector into Spark as a DataFrame.
+        
+        This method is for testing/debugging, allowing manual loading of specific
+        tables into Spark's catalog.
         
         Args:
-            sql: SQL query to explain
+            connector_id: Unique identifier of the connector
+            table_name: Optional table name for PostgreSQL
             
         Returns:
-            Dictionary with execution plan details
+            bool: True if successful, False otherwise
         """
         try:
-            # Parse and plan
-            parsed = self.parser.parse(sql)
-            plan = self.planner.create_plan(parsed)
-            optimized = self.optimizer.optimize(plan)
+            connector = self.connection_manager.get_connector(connector_id)
+            if not connector:
+                logger.warning(f"Connector {connector_id} not found")
+                return False
             
-            # Create explanation
-            explanation = {
-                "original_sql": sql,
-                "parsed_ast": parsed,
-                "logical_plan": plan,
-                "optimized_plan": optimized,
-                "data_sources": list(optimized.get("sources", {}).keys()),
-                "optimizations_applied": self.optimizer.get_applied_optimizations(),
-                "estimated_cost": self.optimizer.estimate_cost(optimized),
-                "pushdown_predicates": optimized.get("pushdown_predicates", {}),
-                "join_order": optimized.get("join_order", []),
-            }
+            # For PostgreSQL, load specific table
+            if 'postgres' in connector_id and table_name:
+                query = f"SELECT * FROM solar.{table_name}"
+                result = await connector.execute_query(query)
+                
+                if result and result.rows:
+                    # Create DataFrame and register view
+                    df = self.spark_engine.create_dataframe_from_data(result.rows)
+                    self.spark_engine.create_temp_view(df, f"postgres_{table_name}")
+                    logger.info(f"Loaded {table_name} from PostgreSQL into Spark")
+                    return True
             
-            return explanation
+            # For other connectors, just register
+            logger.info(f"Connector {connector_id} registered")
+            return True
             
         except Exception as e:
-            logger.error(f"Failed to explain federation plan: {e}")
-            raise
+            logger.error(f"Failed to load connector {connector_id}: {e}")
+            return False
     
     def get_federation_statistics(self) -> Dict[str, Any]:
-        """Get statistics about federation engine performance."""
-        return {
-            "spark_version": self.spark_engine.spark.version,
-            "active_sessions": self.spark_engine.spark.sparkContext.statusTracker().getExecutorInfos(),
-            "cached_tables": list(self.spark_engine.spark.catalog.listTables()),
-            "default_parallelism": self.spark_engine.spark.sparkContext.defaultParallelism,
+        """
+        Get statistics about the federation engine.
+        
+        Returns:
+            dict: Statistics from the Spark engine plus federation metadata
+        """
+        # Get Spark statistics and add federation-specific info
+        stats = self.spark_engine.get_spark_statistics()
+        stats.update({
             "federation_enabled": True,
+            "connector_count": len(self.connection_manager.list_connectors()),
             "optimization_rules": [
                 "predicate_pushdown",
-                "projection_pruning", 
+                "projection_pushdown", 
                 "join_reordering",
-                "partition_pruning",
-                "broadcast_join"
+                "partition_pruning"
             ]
-        }
+        })
+        return stats
     
     def stop(self):
-        """Shutdown the federation executor."""
+        """Shutdown the federation executor and release Spark resources."""
         self.spark_engine.stop()

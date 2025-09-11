@@ -9,9 +9,11 @@ import os
 from typing import Dict, List, Optional
 from pathlib import Path
 
-from laykhaus.connectors.base import BaseConnector, ConnectionConfig, HealthStatus
-from laykhaus.connectors.kafka_connector import KafkaConnector
-from laykhaus.connectors.postgres_connector import PostgreSQLConnector
+from laykhaus.connectors.base import BaseConnector, ConnectionConfig, HealthStatus, ConnectorType
+from laykhaus.connectors.factory import ConnectorFactory
+from laykhaus.integrations.postgres import PostgreSQLConnector
+from laykhaus.integrations.kafka import KafkaConnector
+from laykhaus.integrations.rest import RESTAPIConnector
 from laykhaus.core.config import settings
 from laykhaus.core.logging import get_logger
 
@@ -222,27 +224,54 @@ class ConnectionManager:
             except Exception as e:
                 self.logger.error(f"Health monitoring error: {e}")
     
-    def get_statistics(self) -> Dict[str, any]:
+    async def get_statistics(self) -> Dict[str, any]:
         """
         Get statistics about all managed connections.
         
         Returns:
-            Connection statistics
+            Connection statistics in format expected by frontend
         """
-        stats = {
-            "total_connectors": len(self.connectors),
-            "connected": sum(1 for c in self.connectors.values() if c.is_connected),
-            "connectors": {}
+        total_count = len(self.connectors)
+        active_count = 0
+        inactive_count = 0
+        error_count = 0
+        
+        # Count by status - check health for accurate status
+        for connector in self.connectors.values():
+            try:
+                health = await connector.health_check()
+                if connector.is_connected and health.healthy:
+                    active_count += 1
+                elif connector.is_connected and not health.healthy:
+                    error_count += 1
+                else:
+                    inactive_count += 1
+            except Exception:
+                # If health check fails, count as error
+                error_count += 1
+        
+        # Count by type
+        by_type = {
+            "postgresql": 0,
+            "kafka": 0,
+            "rest_api": 0
         }
         
-        for name, connector in self.connectors.items():
-            stats["connectors"][name] = {
-                "type": connector.__class__.__name__,
-                "connected": connector.is_connected,
-                "capabilities": len(connector.get_capabilities().sql_features),
-            }
+        for connector in self.connectors.values():
+            if isinstance(connector, PostgreSQLConnector):
+                by_type["postgresql"] += 1
+            elif isinstance(connector, KafkaConnector):
+                by_type["kafka"] += 1
+            elif hasattr(connector, '__class__') and "REST" in connector.__class__.__name__.upper():
+                by_type["rest_api"] += 1
         
-        return stats
+        return {
+            "total": total_count,
+            "active": active_count,
+            "inactive": inactive_count,
+            "error": error_count,
+            "by_type": by_type
+        }
     
     async def _save_connectors(self) -> None:
         """Save connector configurations to disk for persistence."""
@@ -331,7 +360,7 @@ class ConnectionManager:
                         self.logger.info(f"Loaded Kafka connector: {connector_id}")
                         
                     elif connector_type == 'rest_api':
-                        from laykhaus.connectors.rest_api_connector import RESTAPIConnector
+                        # REST API connector already imported
                         config = ConnectionConfig(
                             host=config_data.get('host', 'localhost'),
                             port=config_data.get('port', 80),

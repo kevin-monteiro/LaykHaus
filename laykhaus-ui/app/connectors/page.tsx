@@ -7,18 +7,28 @@ import { Input } from '@/components/ui/input'
 import { Header } from '@/components/layout/Header'
 import { ConnectorCard } from '@/components/connectors/ConnectorCard'
 import { ConnectorDialog } from '@/components/connectors/ConnectorDialog'
+import { InlineNotification, useInlineNotifications } from '@/components/ui/inline-notification'
 import { Plus, Search, Filter, RefreshCw } from 'lucide-react'
-import { useConnectors, useConnectorStats, useDeleteConnector } from '@/lib/hooks/useConnectors'
-import toast from 'react-hot-toast'
+import { useConnectors, useConnectorStats, useDeleteConnector, useTestConnector } from '@/lib/hooks/useConnectors'
 
 export default function ConnectorsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedConnector, setSelectedConnector] = useState<any>(null)
   
+  const { notifications, addSuccess, addError, removeNotification } = useInlineNotifications()
+  
   const { data: connectors, isLoading, refetch } = useConnectors()
-  const { data: stats } = useConnectorStats()
-  const deleteConnector = useDeleteConnector()
+  const { data: stats, refetch: refetchStats } = useConnectorStats()
+  const deleteConnector = useDeleteConnector({
+    onSuccess: (message) => addSuccess('Connector Deleted', message),
+    onError: (title, message) => addError(title, message),
+  })
+  
+  const testConnector = useTestConnector({
+    onSuccess: (message) => addSuccess('Connection Test', message),
+    onError: (title, message) => addError(title, message),
+  })
 
   const filteredConnectors = connectors?.filter(connector =>
     connector.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -30,6 +40,7 @@ export default function ConnectorsPage() {
       try {
         await deleteConnector.mutateAsync(connectorId)
         refetch()
+        refetchStats()
       } catch (error) {
         // Error handled by mutation
       }
@@ -47,6 +58,17 @@ export default function ConnectorsPage() {
           </p>
         </div>
 
+        {/* Inline Notifications */}
+        <div className="space-y-2">
+          {notifications.map((notification) => (
+            <InlineNotification
+              key={notification.id}
+              notification={notification}
+              onDismiss={() => removeNotification(notification.id)}
+            />
+          ))}
+        </div>
+
       {/* Actions Bar */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6" data-test-id="actions-bar">
         <div className="flex-1 relative">
@@ -60,7 +82,7 @@ export default function ConnectorsPage() {
           />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => refetch()} data-test-id="refresh-button">
+          <Button variant="outline" onClick={() => { refetch(); refetchStats(); }} data-test-id="refresh-button">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
@@ -137,23 +159,7 @@ export default function ConnectorsPage() {
                 setIsDialogOpen(true)
               }}
               onDelete={() => handleDelete(connector.id)}
-              onTest={async () => {
-                toast('Testing connector...', { icon: '🔄' })
-                try {
-                  const response = await fetch(`/api/connectors/${connector.id}/test`, {
-                    method: 'POST',
-                  })
-                  const result = await response.json()
-                  
-                  if (result.success) {
-                    toast.success(`✅ Connection successful! (${result.latency}ms)`)
-                  } else {
-                    toast.error(`❌ Connection failed: ${result.message}`)
-                  }
-                } catch (error) {
-                  toast.error('Failed to test connector')
-                }
-              }}
+              onTest={() => testConnector.mutate(connector.id)}
             />
           ))}
         </div>
@@ -167,10 +173,15 @@ export default function ConnectorsPage() {
             setSelectedConnector(null)
           }}
           connector={selectedConnector}
-          onSuccess={() => {
+          onSuccess={(message) => {
             refetch()
+            refetchStats()
+            // Don't show main page notification - dialog handles its own notifications
             setIsDialogOpen(false)
             setSelectedConnector(null)
+          }}
+          onError={(title, message) => {
+            // Don't show main page notification - dialog handles its own notifications
           }}
         />
       </div>

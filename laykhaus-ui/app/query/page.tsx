@@ -9,6 +9,7 @@ import { QueryEditor } from '@/components/query/QueryEditor'
 import { QueryResults } from '@/components/query/QueryResults'
 import { SchemaExplorer } from '@/components/query/SchemaExplorer'
 import { QueryHistory } from '@/components/query/QueryHistory'
+import { InlineNotification, useInlineNotifications } from '@/components/ui/inline-notification'
 import { Play, Save, History, Database, Code2 } from 'lucide-react'
 import { useExecuteQuery, useSaveQuery } from '@/lib/hooks/useQuery'
 
@@ -18,8 +19,16 @@ export default function QueryPage() {
   const [selectedDataSources] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState('editor')
   
-  const executeQuery = useExecuteQuery()
-  const saveQuery = useSaveQuery()
+  const { notifications, addSuccess, addError, removeNotification } = useInlineNotifications()
+  
+  const executeQuery = useExecuteQuery({
+    onSuccess: (data) => addSuccess('Query Executed', `Query completed successfully. ${data.rows?.length || 0} rows returned.`),
+    onError: (title, message) => addError(title, message),
+  })
+  const saveQuery = useSaveQuery({
+    onSuccess: (message) => addSuccess('Query Saved', message),
+    onError: (title, message) => addError(title, message),
+  })
 
   const handleExecute = () => {
     if (!query.trim()) {
@@ -54,6 +63,17 @@ export default function QueryPage() {
           <p className="text-gray-600 dark:text-gray-400" data-test-id="page-tagline">
             Build and execute federated queries across your data sources
           </p>
+        </div>
+
+        {/* Inline Notifications */}
+        <div className="space-y-2 mb-6">
+          {notifications.map((notification) => (
+            <InlineNotification
+              key={notification.id}
+              notification={notification}
+              onDismiss={() => removeNotification(notification.id)}
+            />
+          ))}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

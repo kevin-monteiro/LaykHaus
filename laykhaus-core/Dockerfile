@@ -45,4 +45,4 @@ ENV PYTHONPATH=/app/src
 EXPOSE 8000
 
 # Run application
-CMD ["uvicorn", "laykhaus.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "laykhaus.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

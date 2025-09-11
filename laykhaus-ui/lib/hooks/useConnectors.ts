@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api/client'
 import { ConnectorConfig } from '@/lib/types/connector'
-import toast from 'react-hot-toast'
 
 export function useConnectors() {
   return useQuery({
@@ -40,7 +39,10 @@ export function useConnector(id: string) {
   })
 }
 
-export function useCreateConnector() {
+export function useCreateConnector(callbacks?: {
+  onSuccess?: (message: string) => void
+  onError?: (title: string, message: string) => void
+}) {
   const queryClient = useQueryClient()
   
   return useMutation({
@@ -48,15 +50,20 @@ export function useCreateConnector() {
       apiPost<ConnectorConfig>('/api/v1/connectors', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connectors'] })
-      toast.success('Connector created successfully')
+      queryClient.invalidateQueries({ queryKey: ['connector-stats'] })
+      callbacks?.onSuccess?.('Connector created successfully')
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to create connector')
+      const errorMessage = error.response?.data?.detail || error.message || 'An unknown error occurred'
+      callbacks?.onError?.('Failed to create connector', errorMessage)
     },
   })
 }
 
-export function useUpdateConnector() {
+export function useUpdateConnector(callbacks?: {
+  onSuccess?: (message: string) => void
+  onError?: (title: string, message: string) => void
+}) {
   const queryClient = useQueryClient()
   
   return useMutation({
@@ -65,42 +72,61 @@ export function useUpdateConnector() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['connectors'] })
       queryClient.invalidateQueries({ queryKey: ['connectors', variables.id] })
-      toast.success('Connector updated successfully')
+      queryClient.invalidateQueries({ queryKey: ['connector-stats'] })
+      callbacks?.onSuccess?.('Connector updated successfully')
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to update connector')
+      const errorMessage = error.response?.data?.detail || error.message || 'An unknown error occurred'
+      callbacks?.onError?.('Failed to update connector', errorMessage)
     },
   })
 }
 
-export function useDeleteConnector() {
+export function useDeleteConnector(callbacks?: {
+  onSuccess?: (message: string) => void
+  onError?: (title: string, message: string) => void
+}) {
   const queryClient = useQueryClient()
   
   return useMutation({
     mutationFn: (id: string) => apiDelete(`/api/v1/connectors/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['connectors'] })
-      toast.success('Connector deleted successfully')
+      queryClient.invalidateQueries({ queryKey: ['connector-stats'] })
+      callbacks?.onSuccess?.('Connector deleted successfully')
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to delete connector')
+      const errorMessage = error.response?.data?.detail || error.message || 'An unknown error occurred'
+      callbacks?.onError?.('Failed to delete connector', errorMessage)
     },
   })
 }
 
-export function useTestConnector() {
+export function useTestConnector(callbacks?: {
+  onSuccess?: (message: string) => void
+  onError?: (title: string, message: string) => void
+}) {
   return useMutation({
     mutationFn: (id: string) => 
-      apiPost<{ success: boolean; message: string }>(`/api/v1/connectors/${id}/test`),
+      apiPost<{ 
+        connected: boolean; 
+        health: { 
+          status: string; 
+          message: string; 
+          details: any 
+        } 
+      }>(`/api/v1/connectors/${id}/test`),
     onSuccess: (data) => {
-      if (data.success) {
-        toast.success('Connection test successful')
+      if (data.connected && data.health.status === 'healthy') {
+        callbacks?.onSuccess?.(`Connection test successful. ${data.health.message}`)
       } else {
-        toast.error(data.message || 'Connection test failed')
+        const errorMsg = data.health.message || 'Connection test failed'
+        callbacks?.onError?.('Connection test failed', errorMsg)
       }
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Connection test failed')
+      const errorMessage = error.response?.data?.detail || error.message || 'An unknown error occurred'
+      callbacks?.onError?.('Connection test failed', errorMessage)
     },
   })
 }

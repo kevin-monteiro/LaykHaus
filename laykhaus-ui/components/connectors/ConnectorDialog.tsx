@@ -30,15 +30,15 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { ConnectorConfig } from '@/lib/types/connector'
 import { Play, Save, Eye, EyeOff } from 'lucide-react'
 import { useCreateConnector, useUpdateConnector, useTestConnector } from '@/lib/hooks/useConnectors'
+import { InlineNotification, useInlineNotifications } from '@/components/ui/inline-notification'
 
 const connectorSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  type: z.enum(['postgresql', 'kafka', 'rest_api', 'minio']),
+  type: z.enum(['postgresql', 'kafka', 'rest_api']),
   // PostgreSQL fields
   host: z.string().optional(),
   port: z.number().optional(),
@@ -63,17 +63,38 @@ interface ConnectorDialogProps {
   isOpen: boolean
   onClose: () => void
   connector?: ConnectorConfig | null
-  onSuccess?: () => void
+  onSuccess?: (message: string) => void
+  onError?: (title: string, message: string) => void
 }
 
-export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: ConnectorDialogProps) {
+export function ConnectorDialog({ isOpen, onClose, connector, onSuccess, onError }: ConnectorDialogProps) {
   const [isTesting, setIsTesting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
   const [schemaError, setSchemaError] = useState<string | null>(null)
-  const createConnector = useCreateConnector()
-  const updateConnector = useUpdateConnector()
-  const testConnector = useTestConnector()
+  
+  // Dialog-specific notifications
+  const { notifications, addSuccess, addError, removeNotification, clearAll } = useInlineNotifications()
+  
+  const createConnector = useCreateConnector({
+    onSuccess: (message) => {
+      addSuccess('Connector Created', message)
+      // Still call parent callback for UI state management (closing dialog, etc)
+      setTimeout(() => onSuccess?.(message), 1500) // Delay to show success message
+    },
+    onError: (title, message) => addError(title, message),
+  })
+  const updateConnector = useUpdateConnector({
+    onSuccess: (message) => {
+      addSuccess('Connector Updated', message)
+      setTimeout(() => onSuccess?.(message), 1500)
+    },
+    onError: (title, message) => addError(title, message),
+  })
+  const testConnector = useTestConnector({
+    onSuccess: (message) => addSuccess('Connection Test', message),
+    onError: (title, message) => addError(title, message),
+  })
 
   const form = useForm<ConnectorFormData>({
     resolver: zodResolver(connectorSchema),
@@ -83,12 +104,19 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
     },
   })
 
+  // Clear notifications when dialog opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      clearAll() // Clear any previous notifications when dialog opens
+    }
+  }, [isOpen, clearAll]) // clearAll is now stable with useCallback
+
   useEffect(() => {
     if (connector) {
       // Parse existing connector data
       const formData: any = {
         name: connector.name,
-        type: connector.type === 'rest' ? 'rest_api' : connector.type,
+        type: connector.type === 'rest' ? 'rest_api' : connector.type, // Backend might return 'rest', convert to 'rest_api' for form
       }
       
       // Map config based on type
@@ -128,7 +156,7 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
     try {
       let connectorData: any = {
         name: data.name,
-        type: data.type === 'rest_api' ? 'rest' : data.type,
+        type: data.type, // Keep original type - backend expects 'rest_api' not 'rest'
         config: {}
       }
 
@@ -154,11 +182,14 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
         // Parse URL to get host and port for backend
         let host = 'localhost'
         let port = 80
+        let basePath = '/api'
+        
         if (data.baseUrl) {
           try {
             const url = new URL(data.baseUrl)
             host = url.hostname
             port = parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80)
+            basePath = url.pathname || '/api'
           } catch {
             // If URL parsing fails, use the baseUrl as is
           }
@@ -167,7 +198,7 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
         connectorData.config = {
           host: host,
           port: port,
-          base_url: data.baseUrl,
+          base_path: basePath,
           auth_type: data.authType || 'none',
         }
         
@@ -196,17 +227,138 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
       } else {
         await createConnector.mutateAsync(connectorData)
       }
-      onSuccess?.()
     } catch (error) {
       // Error is handled by the mutation hooks
     }
   }
 
   const testConnection = async () => {
-    if (!connector) return
     setIsTesting(true)
     try {
-      await testConnector.mutateAsync(connector.id)
+      // If editing existing connector, test with connector ID
+      if (connector) {
+        await testConnector.mutateAsync(connector.id)
+      } else {
+        // If creating new connector, create a temporary connector first
+        const formData = form.getValues()
+        if (!formData.name || !formData.type) {
+          addError('Test Failed', 'Please fill in connector name and type before testing')
+          return
+        }
+
+        // Build connector data for testing (similar to onSubmit logic)
+        let connectorData: any = {
+          name: formData.name,
+          type: formData.type, // Keep original type - backend expects 'rest_api' not 'rest'
+          config: {}
+        }
+
+        // Build config based on connector type
+        if (formData.type === 'postgresql') {
+          if (!formData.host || !formData.database || !formData.username) {
+            addError('Test Failed', 'Please fill in all required PostgreSQL connection fields (host, database, username)')
+            return
+          }
+          connectorData.config = {
+            host: formData.host,
+            port: formData.port || 5432,
+            database: formData.database,
+            username: formData.username,
+            password: formData.password || '',
+            schema: formData.schema || 'public',
+          }
+        } else if (formData.type === 'kafka') {
+          if (!formData.brokers) {
+            addError('Test Failed', 'Please fill in Kafka brokers before testing')
+            return
+          }
+          const topicsArray = formData.topics ? formData.topics.split(',').map(t => t.trim()) : []
+          // Backend expects brokers as a string and extracts host/port from it
+          connectorData.config = {
+            brokers: formData.brokers,
+            topics: topicsArray,
+            group_id: formData.groupId || 'laykhaus-consumer',
+          }
+        } else if (formData.type === 'rest_api') {
+          if (!formData.baseUrl) {
+            addError('Test Failed', 'Please fill in base URL before testing')
+            return
+          }
+          
+          // Parse URL to get host and port for backend (matching onSubmit logic)
+          let host = 'localhost'
+          let port = 80
+          let basePath = '/api'
+          
+          if (formData.baseUrl) {
+            try {
+              const url = new URL(formData.baseUrl)
+              host = url.hostname
+              port = parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80)
+              basePath = url.pathname || '/api'
+            } catch {
+              // If URL parsing fails, use the baseUrl as is
+            }
+          }
+          
+          connectorData.config = {
+            host: host,
+            port: port,
+            base_path: basePath,
+            auth_type: formData.authType || 'none',
+          }
+          
+          if (formData.authType === 'api_key' && formData.apiKey) {
+            connectorData.config.auth_config = {
+              api_key: formData.apiKey,
+            }
+          }
+        }
+
+        // Create temporary connector and test it
+        try {
+          console.log('Creating test connector with data:', connectorData)
+          
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/connectors`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(connectorData),
+          })
+          
+          if (!response.ok) {
+            const error = await response.json()
+            console.error('Failed to create test connector:', error)
+            throw new Error(error.detail || 'Failed to create test connector')
+          }
+          
+          const result = await response.json()
+          const tempConnectorId = result.id
+          console.log('Created temporary connector:', tempConnectorId)
+          
+          // Wait a moment for the connector to be fully registered
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // Test the temporary connector
+          console.log('Testing connector:', tempConnectorId)
+          await testConnector.mutateAsync(tempConnectorId)
+          
+          // Clean up temporary connector
+          console.log('Cleaning up temporary connector:', tempConnectorId)
+          const deleteResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/connectors/${tempConnectorId}`, {
+            method: 'DELETE',
+          })
+          
+          if (!deleteResponse.ok) {
+            console.warn('Failed to delete temporary connector:', tempConnectorId)
+          }
+          
+        } catch (error: any) {
+          console.error('Test connection error:', error)
+          throw error
+        }
+      }
+    } catch (error: any) {
+      // Error handling is done by the testConnector hook
     } finally {
       setIsTesting(false)
     }
@@ -224,16 +376,23 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
           </DialogDescription>
         </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <Tabs defaultValue="general" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="general">General</TabsTrigger>
-                <TabsTrigger value="connection">Connection</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced</TabsTrigger>
-              </TabsList>
+        {/* Dialog-specific notifications */}
+        <div className="space-y-2">
+          {notifications.map((notification) => (
+            <InlineNotification
+              key={notification.id}
+              notification={notification}
+              onDismiss={() => removeNotification(notification.id)}
+            />
+          ))}
+        </div>
 
-              <TabsContent value="general" className="space-y-4 mt-4">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-h-[70vh] overflow-y-auto px-1">
+            {/* General Configuration Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">General Configuration</h3>
+              <div className="border-l-2 border-muted pl-4 space-y-4">
                 {connector && connector.id && (
                   <div className="space-y-2">
                     <FormLabel>Connector ID</FormLabel>
@@ -281,7 +440,6 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
                           <SelectItem value="postgresql">PostgreSQL</SelectItem>
                           <SelectItem value="kafka">Apache Kafka</SelectItem>
                           <SelectItem value="rest_api">REST API</SelectItem>
-                          <SelectItem value="minio">MinIO</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormDescription>
@@ -291,9 +449,13 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
                     </FormItem>
                   )}
                 />
-              </TabsContent>
+              </div>
+            </div>
 
-              <TabsContent value="connection" className="space-y-4 mt-4">
+            {/* Connection Configuration Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Connection Details</h3>
+              <div className="border-l-2 border-muted pl-4 space-y-4">
                 {connectorType === 'postgresql' && (
                   <>
                     <FormField
@@ -534,10 +696,14 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
                     )}
                   </>
                 )}
-              </TabsContent>
+              </div>
+            </div>
 
-              <TabsContent value="advanced" className="space-y-4 mt-4">
-                {connectorType === 'rest_api' && (
+            {/* Advanced Configuration Section - Only show for REST API */}
+            {connectorType === 'rest_api' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Advanced Configuration</h3>
+                <div className="border-l-2 border-muted pl-4 space-y-4">
                   <FormField
                     control={form.control}
                     name="restApiSchema"
@@ -562,7 +728,7 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
   }
 }`
                             }
-                            className="font-mono text-sm min-h-[300px]"
+                            className="font-mono text-sm min-h-[200px]"
                             {...field}
                           />
                         </FormControl>
@@ -577,21 +743,16 @@ export function ConnectorDialog({ isOpen, onClose, connector, onSuccess }: Conne
                       </FormItem>
                     )}
                   />
-                )}
-                {connectorType !== 'rest_api' && (
-                  <p className="text-sm text-muted-foreground">
-                    Advanced configuration options for {connectorType} will be available here
-                  </p>
-                )}
-              </TabsContent>
-            </Tabs>
+                </div>
+              </div>
+            )}
 
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
                 onClick={testConnection}
-                disabled={isTesting || createConnector.isPending || updateConnector.isPending || !connector}
+                disabled={isTesting || createConnector.isPending || updateConnector.isPending}
               >
                 <Play className="mr-2 h-4 w-4" />
                 {isTesting ? 'Testing...' : 'Test Connection'}
