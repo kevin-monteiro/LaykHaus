@@ -429,3 +429,27 @@ class PostgreSQLConnector(BaseConnector):
                     results.append(result)
         
         return results
+    
+    def create_spark_dataframe(self, spark, schema: str, table: str):
+        """
+        Create a Spark DataFrame for a specific table.
+        This encapsulates the integration-specific logic for PostgreSQL.
+        
+        Args:
+            spark: SparkSession instance
+            schema: Database schema name
+            table: Table name
+            
+        Returns:
+            Spark DataFrame connected to the PostgreSQL table
+        """
+        jdbc_url = f"jdbc:postgresql://{self.config.host}:{self.config.port}/{self.config.database}"
+        
+        return spark.read \
+            .format("jdbc") \
+            .option("url", jdbc_url) \
+            .option("dbtable", f"{schema}.{table}") \
+            .option("user", self.config.username) \
+            .option("password", self.config.password) \
+            .option("driver", "org.postgresql.Driver") \
+            .load()
