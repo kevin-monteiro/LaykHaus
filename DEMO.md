@@ -132,26 +132,21 @@ For manual schema configuration in the UI (Advanced tab), use this JSON format:
       "method": "GET",
       "columns": {
         "panel_id": "integer",
+        "serial_number": "varchar",
         "location": "varchar",
+        "status": "varchar",
         "capacity_watts": "integer",
+        "current_output_watts": "integer",
         "efficiency": "float",
-        "temperature": "float"
-      }
-    },
-    "weather": {
-      "description": "Weather data",
-      "endpoint": "/api/weather/current",
-      "method": "GET",
-      "columns": {
-        "station_id": "integer",
-        "temperature_celsius": "float",
-        "humidity_percentage": "float",
-        "solar_radiation_wm2": "float"
+        "temperature": "float",
+        "last_updated": "timestamp"
       }
     }
   }
 }
 ```
+
+**Note**: The demo REST API has been simplified to focus on the core panels endpoint that works seamlessly with the federation engine.
 
 Note: When using the API directly, wrap this in `config.extra_params.schema`.
 
@@ -193,11 +188,12 @@ LIMIT 5;
 
 **REST API Query:**
 ```sql
--- Get panel data from REST API
-SELECT panel_id, serial_number, location, 
-       current_output_watts, efficiency, temperature
+-- Get panel data from REST API (simplified demo)
+SELECT panel_id, serial_number, location, status,
+       capacity_watts, current_output_watts, efficiency, temperature
 FROM rest_api.panels
-LIMIT 5;
+WHERE status = 'active'
+LIMIT 10;
 ```
 
 ### Step 4: Execute Federated Queries
@@ -304,6 +300,44 @@ WHERE a.severity IN ('critical', 'warning')
   AND a.triggered_at >= CURRENT_TIMESTAMP - INTERVAL '1 hour'
 ORDER BY a.triggered_at DESC
 LIMIT 20;
+```
+
+#### REST API + Kafka Federation
+```sql
+-- Compare real-time telemetry with REST API panel data
+SELECT 
+    p.panel_id,
+    p.location,
+    p.status,
+    p.capacity_watts,
+    k.power_output_watts as current_power,
+    k.temperature_celsius as current_temp,
+    p.efficiency as rated_efficiency,
+    k.efficiency_percentage as current_efficiency
+FROM rest_api.panels p
+JOIN kafka.`solar-panel-telemetry` k ON CAST(p.panel_id AS STRING) = k.panel_id
+WHERE p.status = 'active'
+LIMIT 10;
+```
+
+#### Three-Way Federation (PostgreSQL + Kafka + REST API)
+```sql
+-- Combine static data, streaming data, and REST API data
+SELECT 
+    pg.panel_id,
+    pg.manufacturer,
+    pg.installation_date,
+    p.location,
+    p.status,
+    k.power_output_watts as current_power,
+    k.temperature_celsius as current_temp,
+    p.efficiency as rated_efficiency,
+    k.efficiency_percentage as current_efficiency
+FROM postgres.solar.solar_panels pg
+JOIN rest_api.panels p ON pg.panel_id = CAST(p.panel_id AS INTEGER)
+JOIN kafka.`solar-panel-telemetry` k ON CAST(pg.panel_id AS STRING) = k.panel_id
+WHERE pg.status = 'active' AND p.status = 'active'
+LIMIT 10;
 ```
 
 #### Performance Benchmarking

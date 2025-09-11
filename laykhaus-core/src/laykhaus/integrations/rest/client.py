@@ -181,6 +181,13 @@ class RESTAPIConnector(BaseConnector):
                 # If dict has a data field, use it
                 if "data" in data:
                     rows = data["data"] if isinstance(data["data"], list) else [data["data"]]
+                # Check for common array fields like 'panels', 'items', 'results'
+                elif "panels" in data and isinstance(data["panels"], list):
+                    rows = data["panels"]
+                elif "items" in data and isinstance(data["items"], list):
+                    rows = data["items"]
+                elif "results" in data and isinstance(data["results"], list):
+                    rows = data["results"]
                 else:
                     rows = [data]
             else:
@@ -474,6 +481,8 @@ class RESTAPIConnector(BaseConnector):
                     data = data['results']
                 elif 'items' in data:
                     data = data['items']
+                elif 'panels' in data and isinstance(data['panels'], list):
+                    data = data['panels']
                 else:
                     # Wrap single object in list
                     data = [data]
