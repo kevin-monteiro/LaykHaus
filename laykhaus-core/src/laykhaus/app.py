@@ -26,7 +26,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from laykhaus.api.routes import connectors_router, query_router, health_router
+from laykhaus.api.routes import connectors_router, query_router, health_router, spark_router
 from laykhaus.connectors.connection_manager import connection_manager
 from laykhaus.core.config import settings
 from laykhaus.core.logging import get_logger
@@ -138,6 +138,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)      # Health checks and monitoring
     app.include_router(connectors_router)  # Connector CRUD operations
     app.include_router(query_router)       # Federated query execution
+    app.include_router(spark_router)       # Spark diagnostics and monitoring
     
     return app
 
