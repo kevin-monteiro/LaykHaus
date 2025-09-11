@@ -8,7 +8,7 @@ LaykHaus is a modern federated data platform that enables seamless querying acro
 - **⚡ Apache Spark Integration**: Distributed processing for large-scale analytics
 - **📊 Visual Query Builder**: User-friendly interface with Schema Explorer
 - **🎨 Modern UI**: React/Next.js interface with real-time updates
-- **🔌 Extensible Connectors**: PostgreSQL, Kafka, REST API, and more
+- **🔌 Extensible Connectors**: PostgreSQL, Kafka, REST API with intelligent connection testing
 - **🔗 GraphQL Interface**: GraphQL API for flexible data queries (future migration path)
 
 ## ⚡ Quick Start
@@ -40,6 +40,9 @@ make demo
 ┌─────────────────────────────────────────────────────────────┐
 │                     LaykHaus UI (Next.js)                   │
 │                   http://localhost:3000                     │
+│  • React Query for state management                         │
+│  • Inline notification system                               │
+│  • Streamlined connector management                         │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -47,8 +50,10 @@ make demo
 │                  LaykHaus Core (FastAPI)                    │
 │                  http://localhost:8000                      │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │  • Federation Engine  • Connector Manager           │    │
-│  │  • REST API          • GraphQL Gateway             │    │
+│  │  • Federation Engine (DataFrames)                   │    │
+│  │  • Connection Manager & Factory                     │    │
+│  │  • REST API Routes (/api/v1/*)                     │    │
+│  │  • Real-time Data Provider                         │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -56,6 +61,9 @@ make demo
 ┌─────────────────────────────────────────────────────────────┐
 │              Apache Spark Execution Engine                  │
 │                  http://localhost:8081                      │
+│  • DataFrame-based federated queries                        │
+│  • Catalyst optimizer & Tungsten execution                  │
+│  • Cross-source JOIN operations                             │
 └─────────────────────────────────────────────────────────────┘
                               │
         ┌─────────────────────┼─────────────────────┐
@@ -218,34 +226,48 @@ The platform includes a complete solar energy management system demo:
 
 ```
 LaykHaus/
-├── laykhaus-core/          # Core federation engine
-│   ├── src/laykhaus/       # Python source code
-│   │   ├── federation/     # Query federation logic
-│   │   ├── connectors/     # Data source connectors
-│   │   ├── streaming/      # Kafka & Spark integration
-│   │   ├── ml/             # ML framework
-│   │   └── security/       # RBAC & data masking
-│   └── Dockerfile          # Production Dockerfile
+├── laykhaus-core/              # Core federation engine (FastAPI)
+│   ├── src/laykhaus/
+│   │   ├── api/                # API routes and endpoints
+│   │   │   └── routes/         # Modular route handlers
+│   │   ├── app.py              # FastAPI application entry point
+│   │   ├── connectors/         # Data source connector implementations
+│   │   │   ├── base.py         # Base connector interfaces
+│   │   │   ├── connection_manager.py  # Connection lifecycle management
+│   │   │   └── factory.py      # Connector factory pattern
+│   │   ├── core/               # Core configuration and utilities
+│   │   ├── federation/         # Query federation and execution
+│   │   │   ├── data_provider.py        # Real-time data provider
+│   │   │   └── spark_federated_executor.py  # Spark execution engine
+│   │   └── integrations/       # External service integrations
+│   │       └── spark/          # Apache Spark integration
+│   └── Dockerfile
 │
-├── laykhaus-ui/            # React/Next.js UI
-│   ├── app/                # Next.js app directory
-│   ├── components/         # React components
-│   │   ├── connectors/     # Connector management
-│   │   ├── query/          # Query builder
-│   │   └── layout/         # Layout components
-│   └── Dockerfile          # Production Dockerfile
+├── laykhaus-ui/                # Frontend application (Next.js 14)
+│   ├── app/                    # Next.js app router
+│   ├── components/
+│   │   ├── connectors/         # Connector management UI
+│   │   │   └── ConnectorDialog.tsx  # Single-page connector form
+│   │   ├── query/              # Query builder interface
+│   │   ├── layout/             # Application layout
+│   │   └── ui/                 # Reusable UI components
+│   │       └── inline-notification.tsx  # Contextual notifications
+│   ├── lib/
+│   │   ├── api/                # API client utilities
+│   │   ├── hooks/              # React Query hooks
+│   │   │   └── useConnectors.ts    # Connector state management
+│   │   └── types/              # TypeScript type definitions
+│   └── Dockerfile
 │
-├── mock-data-generator/    # Demo data services
-│   ├── postgres/           # PostgreSQL with sample data
-│   ├── rest-api/           # Mock REST API service
-│   └── generator/          # Kafka data generator
+├── mock-data-generator/        # Demo data services
+│   ├── postgres/               # PostgreSQL with sample data
+│   ├── rest-api/               # Mock REST API service
+│   └── generator/              # Kafka data generator
 │
-├── docker-compose.yml      # Main platform services
-├── docker-compose.data.yml # Demo data services
-├── Makefile                # Convenience commands
-├── .gitignore              # Git ignore rules
-├── .dockerignore           # Docker ignore rules
-└── README.md               # This file
+├── docker-compose.yml          # Main platform services
+├── docker-compose.data.yml     # Demo data services
+├── Makefile                    # Development commands
+└── README.md                   # Documentation
 ```
 
 ## 🐛 Troubleshooting
@@ -289,10 +311,21 @@ Ensure these ports are available:
 
 ### Key Endpoints
 ```
-GET  /api/v1/connectors        # List all connectors
-POST /api/v1/connectors        # Add new connector
-POST /api/v1/query/execute     # Execute federated query
-GET  /api/v1/catalog/schemas   # Get schema information
-GET  /health                   # Platform health check
+# Connector Management
+GET  /api/v1/connectors              # List all connectors with status
+POST /api/v1/connectors              # Create new connector
+GET  /api/v1/connectors/{id}         # Get connector details
+PUT  /api/v1/connectors/{id}         # Update connector configuration
+DELETE /api/v1/connectors/{id}       # Remove connector
+POST /api/v1/connectors/{id}/test    # Test connector connection
+GET  /api/v1/connectors/{id}/schema  # Get connector schema
+GET  /api/v1/connectors/stats        # Get connector statistics
+
+# Query Execution
+POST /api/v1/query/execute           # Execute federated SQL query
+GET  /api/v1/catalog/schemas         # Get available schemas
+
+# Health & Monitoring
+GET  /health                         # Platform health check
 ```
 

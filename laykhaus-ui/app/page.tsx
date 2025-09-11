@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Header } from '@/components/layout/Header'
+import { useConnectorStats } from '@/lib/hooks/useConnectors'
 import { 
   Database, 
   ArrowRight,
@@ -11,70 +12,89 @@ import {
 } from 'lucide-react'
 
 export default function HomePage() {
-  const [stats, setStats] = useState([
-    { label: 'Active Connectors', value: '0', change: 'Loading...' },
-    { label: 'Queries Today', value: '0', change: 'Loading...' },
-    { label: 'Streaming Topics', value: '0', change: 'Loading...' },
-    { label: 'Spark Jobs', value: '0', change: 'Loading...' },
-  ])
+  // Use React Query for connector stats - will auto-update when cache is invalidated
+  const { data: connectorStats } = useConnectorStats()
+  
+  // Manual state for other stats that don't change with connector operations
+  const [otherStats, setOtherStats] = useState({
+    sparkJobs: { value: '0', change: 'Loading...' },
+    queries: { value: '0', change: 'Loading...' },
+    streaming: { value: '0', change: 'Loading...' },
+  })
 
   useEffect(() => {
-    // Fetch real stats
-    const fetchStats = async () => {
+    // Fetch non-connector stats once on mount (these don't change with connector operations)
+    const fetchOtherStats = async () => {
       try {
-        // Fetch connectors count
-        const connectorsRes = await fetch('/api/connectors/stats')
-        if (connectorsRes.ok) {
-          const connectorsData = await connectorsRes.json()
-          setStats(prev => prev.map(stat => 
-            stat.label === 'Active Connectors' 
-              ? { ...stat, value: String(connectorsData.total || 0), change: `${connectorsData.active || 0} active` }
-              : stat
-          ))
-        }
-
         // Fetch Spark jobs info
         const sparkRes = await fetch('/api/spark/stats')
         if (sparkRes.ok) {
           const sparkData = await sparkRes.json()
-          setStats(prev => prev.map(stat => 
-            stat.label === 'Spark Jobs' 
-              ? { ...stat, value: String(sparkData.running || 0), change: sparkData.running > 0 ? 'Running' : 'Idle' }
-              : stat
-          ))
+          setOtherStats(prev => ({
+            ...prev,
+            sparkJobs: {
+              value: String(sparkData.running || 0),
+              change: sparkData.running > 0 ? 'Running' : 'Idle'
+            }
+          }))
         }
 
         // Fetch query stats
         const queryRes = await fetch('/api/queries/stats')
         if (queryRes.ok) {
           const queryData = await queryRes.json()
-          setStats(prev => prev.map(stat => 
-            stat.label === 'Queries Today' 
-              ? { ...stat, value: String(queryData.today || 0), change: `${queryData.total || 0} total` }
-              : stat
-          ))
+          setOtherStats(prev => ({
+            ...prev,
+            queries: {
+              value: String(queryData.today || 0),
+              change: `${queryData.total || 0} total`
+            }
+          }))
         }
 
         // Fetch streaming stats
         const streamingRes = await fetch('/api/streaming/stats')
         if (streamingRes.ok) {
           const streamingData = await streamingRes.json()
-          setStats(prev => prev.map(stat => 
-            stat.label === 'Streaming Topics' 
-              ? { ...stat, value: String(streamingData.topics || 0), change: `${streamingData.partitions || 0} partitions` }
-              : stat
-          ))
+          setOtherStats(prev => ({
+            ...prev,
+            streaming: {
+              value: String(streamingData.topics || 0),
+              change: `${streamingData.partitions || 0} partitions`
+            }
+          }))
         }
       } catch (error) {
         console.error('Error fetching stats:', error)
       }
     }
 
-    fetchStats()
-    // Refresh stats every 30 seconds
-    const interval = setInterval(fetchStats, 30000)
-    return () => clearInterval(interval)
+    fetchOtherStats()
   }, [])
+
+  // Build combined stats array
+  const stats = [
+    { 
+      label: 'Active Connectors', 
+      value: String(connectorStats?.total || 0), 
+      change: `${connectorStats?.active || 0} active` 
+    },
+    { 
+      label: 'Queries Today', 
+      value: otherStats.queries.value, 
+      change: otherStats.queries.change 
+    },
+    { 
+      label: 'Streaming Topics', 
+      value: otherStats.streaming.value, 
+      change: otherStats.streaming.change 
+    },
+    { 
+      label: 'Spark Jobs', 
+      value: otherStats.sparkJobs.value, 
+      change: otherStats.sparkJobs.change 
+    },
+  ]
   const features = [
     {
       title: 'Connector Management',

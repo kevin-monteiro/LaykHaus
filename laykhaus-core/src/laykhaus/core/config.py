@@ -33,10 +33,28 @@ class Settings(BaseSettings):
         description="Path to connectors JSON file"
     )
     
+    # Default host for connectors (container names in Docker)
+    default_postgres_host: str = Field(
+        default="demo-postgres",
+        description="Default PostgreSQL host"
+    )
+    default_kafka_host: str = Field(
+        default="kafka",
+        description="Default Kafka host"
+    )
+    default_rest_api_host: str = Field(
+        default="demo-rest-api",
+        description="Default REST API host"
+    )
+    
     # Kafka
     kafka_bootstrap_servers: str = Field(
-        default="localhost:9092",
+        default="kafka:29092",
         description="Kafka bootstrap servers"
+    )
+    kafka_consumer_group: str = Field(
+        default="laykhaus-consumer",
+        description="Default Kafka consumer group ID"
     )
     
     # Spark
@@ -49,12 +67,12 @@ class Settings(BaseSettings):
         description="Kafka topics to subscribe"
     )
     schema_registry_url: str = Field(
-        default="http://localhost:8081",
+        default="http://schema-registry:8081",
         description="Schema Registry URL"
     )
     
     # MinIO/S3
-    minio_endpoint: str = Field(default="localhost:9000")
+    minio_endpoint: str = Field(default="minio:9000")
     minio_access_key: str = Field(default="minioadmin")
     minio_secret_key: str = Field(default="minioadmin")
     minio_secure: bool = Field(default=False)
@@ -87,7 +105,7 @@ class Settings(BaseSettings):
     cost_estimation_enabled: bool = Field(default=True)
     
     # Observability
-    jaeger_agent_host: str = Field(default="localhost")
+    jaeger_agent_host: str = Field(default="jaeger")
     jaeger_agent_port: int = Field(default=6831)
     prometheus_metrics_port: int = Field(default=9091)
     enable_tracing: bool = Field(default=True)
